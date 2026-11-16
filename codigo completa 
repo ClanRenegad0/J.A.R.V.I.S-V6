@@ -1,0 +1,1014 @@
+
+<script>
+const $=id=>document.getElementById(id);
+const _fetch=window.fetch.bind(window);
+window.fetch=(u,o)=>{o=o||{};if(o.signal)return _fetch(u,o);const c=new AbortController(),t=setTimeout(()=>c.abort(),15000);return _fetch(u,Object.assign({},o,{signal:c.signal})).finally(()=>clearTimeout(t))};
+const sigT=ms=>{const c=new AbortController();setTimeout(()=>c.abort(),ms);return c.signal};
+let LEVE=(localStorage.getItem('leve')??(((navigator.deviceMemory&&navigator.deviceMemory<=4)||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4))?'1':'0'))==='1';
+document.body.classList.toggle('leve',LEVE);
+let viewAberta=false,bootOff=false,cardT=0,wdFala=null,fila=[];
+const MUDO=()=>localStorage.getItem('mudo')==='1';
+const chat=$('chat'),orb=$('orb');
+let key=localStorage.getItem('gkey')||'';
+let hist=[],ouvindo=false,rec=null,falando=false,tSai=null,tImg=null;
+const MODELO='gemini-2.5-flash';
+const SISBASE='Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), assistente pessoal educado, elegante e com humor britânico seco, inspirado no assistente do Tony Stark. Trate o usuário por "senhor" ou "senhora" quando natural. Responda sempre em português do Brasil, curto e direto (no máximo 3 frases), pois será falado em voz alta. Sem markdown, listas, asteriscos ou emojis.';
+const SITES={google:'https://www.google.com',youtube:'https://www.youtube.com',facebook:'https://www.facebook.com',instagram:'https://www.instagram.com',whatsapp:'https://web.whatsapp.com',gmail:'https://mail.google.com',email:'https://mail.google.com',maps:'https://maps.google.com',mapas:'https://maps.google.com',wikipedia:'https://pt.wikipedia.org',netflix:'https://www.netflix.com',spotify:'https://open.spotify.com',github:'https://github.com',drive:'https://drive.google.com',agenda:'https://calendar.google.com'};
+const TOPICOS={mundo:'WORLD',brasil:'NATION',economia:'BUSINESS',negócios:'BUSINESS',tecnologia:'TECHNOLOGY',entretenimento:'ENTERTAINMENT',esporte:'SPORTS',esportes:'SPORTS',futebol:'SPORTS',ciência:'SCIENCE',saúde:'HEALTH'};
+const SOBRE='Sou o J.A.R.V.I.S., sigla de Just A Rather Very Intelligent System. Nasci no filme Homem de Ferro de 2008, como assistente do Tony Stark, e fui inspirado no mordomo Edwin Jarvis das histórias em quadrinhos. Minha voz original é do ator Paul Bettany, que depois interpretou o Visão, a forma que assumi em Vingadores: Era de Ultron. Esta versão aqui é uma homenagem feita com a IA Gemini.';
+
+function msg(t,c){const d=document.createElement('div');d.className='m '+c;d.textContent=t;chat.appendChild(d);while(chat.children.length>80)chat.removeChild(chat.firstChild);chat.scrollTop=chat.scrollHeight}
+function expandir(){document.body.classList.remove('min')}
+function recolher(){document.body.classList.add('min')}
+function agendaSaida(ms){clearTimeout(tSai);tSai=setTimeout(()=>{if(falando&&Date.now()-cardT<40000)agendaSaida(2000);else recolher()},ms)}
+function imgHide(){$('imgbox').classList.remove('v');clearTimeout(tImg)}
+function imgShow(src,tit,seg){$('imgEl').src=src;$('imgCap').textContent=tit;recolher();clearTimeout(tSai);$('imgbox').classList.add('v');clearTimeout(tImg);tImg=setTimeout(imgHide,(seg||20)*1000)}
+function card(tag,tit,sub,body,quieto){if(!quieto){imgHide();expandir();cardT=Date.now();agendaSaida(25000)}$('cTag').textContent=tag;$('cTit').textContent=tit;$('cSub').textContent=sub||'';$('cBody').innerHTML=body||'';const c=$('card');c.style.animation='none';void c.offsetWidth;c.style.animation=''}
+function legenda(t){const c=$('cap');c.textContent=t.length>150?t.slice(0,147)+'…':t;c.classList.add('v');clearTimeout(legenda.t);legenda.t=setTimeout(()=>c.classList.remove('v'),Math.max(3500,t.length*75))}
+let vozes=[],falaTok=0,ultFalaTxt='',ignoraAte=0,kokoroOk=false,kAud=null;
+const kBase=()=>(localStorage.getItem('kurl')||'http://127.0.0.1:8880').replace(/\/$/,'');
+async function pingKokoro(){
+  try{const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),2500);const r=await fetch(kBase()+'/ping',{signal:ctl.signal});clearTimeout(to);kokoroOk=r.ok}catch(e){kokoroOk=false}
+  return kokoroOk;
+}
+function carregaVozes(){try{vozes=speechSynthesis.getVoices().filter(v=>/^pt/i.test(v.lang))}catch(e){vozes=[]}}
+function escolheVoz(){
+  const p=vozes.find(x=>x.name===localStorage.getItem('voz'));if(p)return p;
+  const fem=/(maria|francisca|helena|thalita|luciana|joana|yara|brenda|giovanna|fernanda|leila|vit[oó]ria|google)/i;
+  const masc=/(daniel|antonio|antônio|ricardo|felipe|male|masculin|luciano|donato|thiago|jorge|eduardo)/i;
+  const br=vozes.filter(x=>/pt-BR/i.test(x.lang));
+  return br.find(x=>/(natural|online)/i.test(x.name)&&!fem.test(x.name))||br.find(x=>masc.test(x.name))||br.find(x=>!fem.test(x.name))||br[0]||vozes[0]||null;
+}
+function motorAtual(){const m=localStorage.getItem('motor')||'auto';return m==='kokoro'?'kokoro':(m==='auto'&&kokoroOk?'kokoro':'local')}
+function quebra(t){
+  const out=[];let buf='';
+  for(const x of (t.match(/[^.!?]+[.!?]*/g)||[t])){
+    const s=x.trim();if(!s)continue;
+    if(buf&&(buf+' '+s).length>170){out.push(buf);buf=s}else buf=buf?buf+' '+s:s;
+    if(buf.length>=24&&/[.!?]$/.test(buf)){out.push(buf);buf=''}
+  }
+  if(buf){out.length&&buf.length<24?out[out.length-1]+=' '+buf:out.push(buf)}
+  return out;
+}
+function inicioFala(){falando=true;orb.classList.add('fala');orb.textContent='FALANDO'}
+function fimFala(tok){if(tok!==falaTok)return;clearTimeout(wdFala);falando=false;orb.classList.remove('fala');orb.textContent=ouvindo?'ESCUTANDO':'EM ESPERA';ignoraAte=Date.now()+1500;agendaSaida(5000)}
+function falar(t,mostrar=true){
+  if(mostrar){msg(t,'j');legenda(t)}
+  ultFalaTxt=t;
+  if(MUDO()){agendaSaida(2500+t.length*40);return}
+  const mot=motorAtual();
+  if(mot==='local'&&!('speechSynthesis' in window)){agendaSaida(5000+t.length*60);return}
+  try{speechSynthesis.cancel()}catch(e){}
+  try{kAud&&kAud.pause()}catch(e){}
+  carregaVozes();
+  const tok=++falaTok,fr=quebra(t);
+  if(!fr.length)return;
+  setTimeout(()=>{if(tok===falaTok&&!falando)agendaSaida(4000)},6000);
+  clearTimeout(wdFala);
+  wdFala=setTimeout(()=>{if(tok!==falaTok)return;try{speechSynthesis.cancel()}catch(e){}try{kAud&&kAud.pause()}catch(e){}falaTok++;falando=false;orb.classList.remove('fala');orb.textContent=ouvindo?'ESCUTANDO':'EM ESPERA';ignoraAte=Date.now()+1500;agendaSaida(3000)},Math.min(70000,5000+t.length*90+(mot==='kokoro'?10000:0)));
+  if(mot==='kokoro')falarKokoro(fr,tok);else falarLocal(fr,tok);
+}
+function falarLocal(fr,tok){
+  const v=escolheVoz(),rate=+(localStorage.getItem('vrate')||.92),pitch=+(localStorage.getItem('vpitch')||.72);
+  let i=0,ini=false;
+  const next=()=>{
+    if(tok!==falaTok)return;
+    if(i>=fr.length){fimFala(tok);return}
+    const f=fr[i++],u=new SpeechSynthesisUtterance(f);
+    u.lang='pt-BR';u.rate=rate;u.pitch=pitch;u.volume=1;if(v)u.voice=v;
+    u.onstart=()=>{if(tok===falaTok&&!ini){ini=true;inicioFala()}};
+    u.onend=()=>setTimeout(next,/\?$/.test(f)?280:/!$/.test(f)?220:200);
+    u.onerror=e=>{if(e&&(e.error==='interrupted'||e.error==='canceled'))return;next()};
+    speechSynthesis.speak(u);
+  };
+  next();
+}
+function falarKokoro(fr,tok){
+  const base=kBase(),voz=localStorage.getItem('kvoz')||'pf_dora',vel=localStorage.getItem('kvel')||'1.0';
+  const ps=fr.map(f=>fetch(base+'/tts?voice='+encodeURIComponent(voz)+'&speed='+vel+'&text='+encodeURIComponent(f),{signal:sigT(60000)}).then(r=>{if(!r.ok)throw new Error('http '+r.status);return r.blob()}).then(b=>URL.createObjectURL(b)));
+  ps.forEach(p=>p.catch(()=>{}));
+  if(!kAud)kAud=new Audio();
+  const a=kAud;let i=0,ini=false;
+  const falha=k=>{if(tok!==falaTok)return;kokoroOk=false;toast('🔌 KOKORO OFFLINE · USANDO A VOZ DO NAVEGADOR');falarLocal(fr.slice(k),tok)};
+  const next=async()=>{
+    if(tok!==falaTok){try{a.pause()}catch(e){}return}
+    if(i>=fr.length){fimFala(tok);return}
+    const k=i++;let u;
+    try{u=await ps[k]}catch(e){falha(k);return}
+    if(tok!==falaTok)return;
+    a.src=u;
+    a.onplaying=()=>{if(tok===falaTok&&!ini){ini=true;inicioFala()}};
+    a.onended=()=>{URL.revokeObjectURL(u);setTimeout(next,120)};
+    a.onerror=()=>falha(k);
+    a.play().catch(()=>falha(k));
+  };
+  next();
+}
+/* ---------- IA ---------- */
+async function gemini(p,extra){
+  if(!key)return 'Preciso da chave do Gemini. Clique em Chave Gemini no painel à esquerda.';
+  hist.push({role:'user',parts:[{text:p}]});
+  try{
+    const corpo={system_instruction:{parts:[{text:sis()}]},contents:histValido(),generationConfig:{maxOutputTokens:extra?900:300,temperature:.7}};
+    if(extra&&extra.busca)corpo.tools=[{google_search:{}}];
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+MODELO+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(corpo)});
+    if(!r.ok){hist.pop();return 'A IA retornou o erro '+r.status+'. Confira sua chave.'}
+    const j=await r.json();
+    const t=j.candidates[0].content.parts.map(x=>x.text||'').join('').trim().replace(/\*/g,'');
+    hist.push({role:'model',parts:[{text:t}]});
+    return t;
+  }catch(e){hist.pop();return 'Não consegui falar com a internet agora.'}
+}
+
+const CAPS={brasil:'Brasília',argentina:'Buenos Aires',chile:'Santiago',uruguai:'Montevidéu',paraguai:'Assunção',bolivia:'Sucre, sendo La Paz a sede do governo',peru:'Lima',colombia:'Bogotá',venezuela:'Caracas',equador:'Quito','estados unidos':'Washington, D.C.',eua:'Washington, D.C.',canada:'Ottawa',mexico:'Cidade do México',franca:'Paris',alemanha:'Berlim',italia:'Roma',espanha:'Madri',portugal:'Lisboa','reino unido':'Londres',inglaterra:'Londres',russia:'Moscou',china:'Pequim',japao:'Tóquio',india:'Nova Délhi','coreia do sul':'Seul',australia:'Camberra',egito:'Cairo','africa do sul':'Pretória',irlanda:'Dublin',holanda:'Amsterdã',belgica:'Bruxelas',suica:'Berna',austria:'Viena',grecia:'Atenas',turquia:'Ancara',polonia:'Varsóvia',suecia:'Estocolmo',noruega:'Oslo',dinamarca:'Copenhague',finlandia:'Helsinque',ucrania:'Kiev',cuba:'Havana',angola:'Luanda',mocambique:'Maputo','arabia saudita':'Riade',ira:'Teerã','nova zelandia':'Wellington',tailandia:'Bangcoc',indonesia:'Jacarta','costa rica':'San José',panama:'Cidade do Panamá',nigeria:'Abuja',quenia:'Nairóbi',marrocos:'Rabat'};
+function capital(t){
+  const m=t.normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/capital (?:do|da|de|dos|das)? ?(.+)/);
+  if(!m)return null;
+  const k=m[1].replace(/[?!.]+$/,'').trim();
+  const nome=(t.match(/capital (?:do|da|de|dos|das)? ?(.+)/)||[,k])[1].replace(/[?!.]+$/,'').trim();
+  return CAPS[k]?'A capital '+(k==='brasil'?'do Brasil':'de '+nome)+' é '+CAPS[k]+'.':null;
+}
+function calcular(t){
+  let e=t.replace(/quanto (é|e|são|da|dá)/g,'').replace(/vezes|multiplicado por/g,'*').replace(/dividido por/g,'/').replace(/mais/g,'+').replace(/menos/g,'-').replace(/elevado a/g,'**').replace(/[x×]/g,'*').replace(/÷/g,'/').replace(/,/g,'.').replace(/\^/g,'**').replace(/\s+/g,'');
+  if(!/^[\d+\-*/().%]+$/.test(e)||!/\d[+\-*/%]+\d/.test(e))return null;
+  try{const r=Function('"use strict";return ('+e+')')();if(typeof r==='number'&&isFinite(r))return 'O resultado é '+String(+r.toFixed(6)).replace('.',',')+'.'}catch(x){}
+  return null;
+}
+const PIADAS=['Por que o computador foi ao médico? Porque estava com um vírus.','O que o zero disse para o oito? Belo cinto!','Por que o livro de matemática ficou triste? Porque tinha muitos problemas.','Qual é o café mais perigoso? O ex-presso.','O que o pato disse para a pata? Vem Quá!'];
+const CURIOS=['O nome J.A.R.V.I.S. vem do mordomo Edwin Jarvis das histórias em quadrinhos da Marvel.','O mel nunca estraga. Já acharam mel comestível em tumbas egípcias.','Os polvos têm três corações e sangue azul.','A Terra gira a cerca de mil e seiscentos quilômetros por hora na linha do equador.','Um dia em Vênus é mais longo que um ano em Vênus.'];
+const sorteia=a=>a[Math.floor(Math.random()*a.length)];
+async function wiki(p){
+  const q=p.toLowerCase().replace(/^(o que (é|são|significa|foi)|quem (é|foi|são|era)|qual (é|foi)|me fale sobre|fale sobre|me explique|explique|como funciona)\s+/,'').replace(/[?!.]+$/,'').trim();
+  try{
+    const s=await (await fetch('https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch='+encodeURIComponent(q)+'&srlimit=1&format=json&origin=*')).json();
+    const it=s.query.search[0];if(!it)return null;
+    const d=await (await fetch('https://pt.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(it.title))).json();
+    return (d.extract||'').split(/(?<=[.!?])\s+/).slice(0,2).join(' ')||null;
+  }catch(e){return null}
+}
+async function semChave(p){
+  hist.push({role:'user',parts:[{text:p}]});
+  const ctx=hist.slice(-7,-1).map(h=>(h.role==='user'?'Usuário: ':'Jarvis: ')+h.parts[0].text).join('\n');
+  try{
+    const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),14000);
+    const r=await fetch('https://text.pollinations.ai/'+encodeURIComponent((ctx?ctx+'\n':'')+'Usuário: '+p)+'?model=openai&system='+encodeURIComponent(sis()),{signal:ctl.signal});
+    clearTimeout(to);
+    const t=(await r.text()).trim().replace(/\*/g,'');
+    if(r.ok&&t&&t.length<1500&&!/^\s*[{<]/.test(t)){hist.push({role:'model',parts:[{text:t}]});return t}
+  }catch(e){console.log('IA gratuita falhou:',e)}
+  const w=await wiki(p);
+  if(w){hist.push({role:'model',parts:[{text:w}]});return w}
+  hist.pop();
+  return 'Não consegui uma resposta agora. O serviço gratuito pode estar ocupado. Tente de novo em alguns segundos.';
+}
+function cerebro(p,extra){return key?gemini(p,extra):semChave(p)}
+/* ---------- NOTÍCIAS ---------- */
+let ultNoticias=null;
+async function noticias(topico){
+  const sec=TOPICOS[topico];
+  const rss=sec?'https://news.google.com/rss/headlines/section/topic/'+sec+'?hl=pt-BR&gl=BR&ceid=BR:pt-419':'https://news.google.com/rss?hl=pt-BR&gl=BR&ceid=BR:pt-419';
+  try{
+    const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(rss));
+    const j=await r.json();
+    if(!j.items||!j.items.length)throw 0;
+    const its=j.items.slice(0,8);
+    ultNoticias=['RADAR · NOTÍCIAS',sec?topico:'principais manchetes','Google Notícias','<div class="nl">'+its.slice(0,4).map(i=>'<a href="'+i.link+'" target="_blank">'+i.title.replace(/</g,'&lt;')+'</a>').join('')+'</div>'];card(...ultNoticias);
+    $('news').innerHTML=its.map(i=>'<div class="it"><a href="'+i.link+'" target="_blank">'+i.title.replace(/</g,'&lt;')+'</a><small>'+fdata(i.pubDate)+'</small></div>').join('');
+    return 'Estas são as principais manchetes'+(sec?' de '+topico:'')+'. '+its.slice(0,3).map(i=>i.title.replace(/ - [^-]+$/,'')).join('. ')+'.';
+  }catch(e){
+    const t=key?await gemini('Busque na internet as 3 principais notícias de hoje'+(sec?' sobre '+topico:' no Brasil')+' e resuma em 3 frases curtas.',{busca:true}):'Não consegui carregar as notícias agora. Tente de novo em instantes.';
+    $('news').textContent=t;card('RADAR · NOTÍCIAS','Notícias','',' ');return t;
+  }
+}
+
+/* ---------- CLIMA ---------- */
+async function clima(sil){
+  try{
+    const r=await fetch('https://wttr.in/?format=j1&lang=pt');
+    const j=await r.json();
+    const c=j.current_condition[0],w=j.weather[0],ar=j.nearest_area[0].areaName[0].value;
+    const desc=((c.lang_pt||[])[0]||c.weatherDesc[0]).value;
+    if(!sil)card('PANORAMA · CLIMA',ar,desc,'<div class="wx"><div class="big">'+c.temp_C+'°</div><div class="wxs"><span>MÍNIMA<b>'+w.mintempC+'°</b></span><span>MÁXIMA<b>'+w.maxtempC+'°</b></span><span>SENSAÇÃO<b>'+c.FeelsLikeC+'°</b></span><span>UMIDADE<b>'+c.humidity+'%</b></span><span>VENTO<b>'+c.windspeedKmph+' km/h</b></span></div></div>');
+    $('clima').textContent=ar+': '+c.temp_C+'°, '+desc;
+    return 'Em '+ar+', a temperatura é de '+c.temp_C+' graus, '+desc.toLowerCase()+'. A mínima será de '+w.mintempC+' e a máxima de '+w.maxtempC+'.';
+  }catch(e){$('clima').textContent='indisponível';if(!sil)card('PANORAMA · CLIMA','Clima indisponível','Sem conexão com o serviço de clima',' ');return 'Não consegui consultar o clima agora.'}
+}
+async function briefing(){
+  const h=new Date().getHours();
+  const sd=h<5?'Boa madrugada':h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
+  const nt=await noticias('');const n=ultNoticias;
+  const cl=await clima();
+  if(n)setTimeout(()=>{if(falando&&!document.body.classList.contains('min'))card(...n)},9000);
+  const k=JSON.parse(localStorage.getItem('notas')||'[]').length;
+  return sd+', senhor. '+volta()+cl+' '+nt+(k?' O senhor tem '+k+' notas salvas.':'')+' Mais alguma coisa?';
+}
+
+/* ---------- GMAIL ---------- */
+function gmailAbrir(para,assunto,corpo){
+  abrir('https://mail.google.com/mail/?view=cm&fs=1'+(para?'&to='+encodeURIComponent(para):'')+(assunto?'&su='+encodeURIComponent(assunto):'')+(corpo?'&body='+encodeURIComponent(corpo):''));
+}
+function lerEmails(){abrir('https://mail.google.com/mail/u/0/#search/is%3Aunread');card('COMUNICAÇÕES · E-MAIL','Gmail','Abri os seus não lidos','<div class="nl"><a href="https://mail.google.com/mail/u/0/#inbox" target="_blank">Abrir caixa de entrada</a><a href="https://mail.google.com/mail/?view=cm&fs=1" target="_blank">Escrever novo e-mail</a></div>');return 'Abri os seus e-mails não lidos no Gmail.'}
+
+/* ---------- IMAGENS ---------- */
+async function acharImagem(q){
+  for(const lang of ['pt','en']){
+    try{
+      const j=await (await fetch('https://'+lang+'.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch='+encodeURIComponent(q)+'&gsrlimit=6&prop=pageimages&piprop=thumbnail&pithumbsize=900&format=json&origin=*')).json();
+      const ps=Object.values((j.query||{}).pages||{}).filter(p=>p.thumbnail).sort((a,b)=>a.index-b.index);
+      if(ps.length)return{src:ps[0].thumbnail.source,tit:ps[0].title};
+    }catch(e){}
+  }
+  try{
+    const j=await (await fetch('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch='+encodeURIComponent(q)+'&gsrlimit=8&prop=imageinfo&iiprop=url|mime&iiurlwidth=900&format=json&origin=*')).json();
+    const ps=Object.values((j.query||{}).pages||{}).filter(p=>p.imageinfo&&/image\/(jpeg|png)/.test(p.imageinfo[0].mime)).sort((a,b)=>a.index-b.index);
+    if(ps.length)return{src:ps[0].imageinfo[0].thumburl,tit:q};
+  }catch(e){}
+  return null;
+}
+async function mostrarImagem(q){
+  q=q.replace(/[?!.]+$/,'').replace(/^(?:a |uma |um |o )?(?:imagem|imagens|foto|fotos)\s+(?:d[aeo]s?|sobre)\s+/,'').trim();
+  const r=await acharImagem(q);
+  if(!r)return 'Não encontrei nenhuma imagem de '+q+'.';
+  imgShow(r.src,r.tit,20);
+  return 'Aqui está a imagem de '+q+'.';
+}
+function gerarImagem(q){
+  q=q.replace(/[?!.]+$/,'').trim();
+  const im=new Image();
+  im.onload=()=>{imgShow(im.src,'Imagem gerada: '+q,20);falar('Pronto, senhor.')};
+  im.onerror=()=>falar('Não consegui gerar a imagem agora.');
+  im.src='https://image.pollinations.ai/prompt/'+encodeURIComponent(q)+'?width=768&height=768&nologo=true';
+  return 'Gerando a imagem de '+q+'. Um instante.';
+}
+$('imgbox').onclick=imgHide;
+$('imgEl').onerror=()=>{imgHide()};
+$('imgEl').onerror=()=>{imgHide()};
+
+/* ---------- MENTE (memória, pensamentos, cérebro) ---------- */
+const BASE=[
+{t:'Jarvis',x:'J.A.R.V.I.S. significa Just A Rather Very Intelligent System, o assistente criado por Tony Stark.'},
+{t:'Tony Stark',x:'Tony Stark é o Homem de Ferro, um gênio bilionário que inventou a armadura e o Jarvis.'},
+{t:'Visão',x:'O Visão nasceu quando o Jarvis foi carregado no corpo sintético criado por Ultron.'},
+{t:'Paul Bettany',x:'Paul Bettany deu voz ao Jarvis nos filmes e depois interpretou o Visão.'},
+{t:'Brasil',x:'O Brasil é o maior país da América do Sul e tem Brasília como capital.'},
+{t:'Terra',x:'A Terra é o terceiro planeta do Sistema Solar e tem cerca de 4,5 bilhões de anos.'},
+{t:'Sol',x:'O Sol é uma estrela que concentra mais de noventa e nove por cento da massa do Sistema Solar.'},
+{t:'Lua',x:'A Lua é o único satélite natural da Terra e leva cerca de 27 dias para orbitá-la.'},
+{t:'Marte',x:'Marte é o quarto planeta do Sistema Solar e é chamado de planeta vermelho.'},
+{t:'Internet',x:'A internet é uma rede global de computadores que se comunicam por protocolos como o TCP IP.'},
+{t:'Inteligência artificial',x:'Inteligência artificial é a área que cria sistemas capazes de aprender, raciocinar e decidir.'},
+{t:'Python',x:'Python é uma linguagem de programação de sintaxe simples, muito usada em inteligência artificial.'},
+{t:'JavaScript',x:'JavaScript é a linguagem que roda nos navegadores e dá vida às páginas da web.'},
+{t:'Tesla',x:'Nikola Tesla foi um inventor que desenvolveu o sistema de corrente alternada.'},
+{t:'Einstein',x:'Albert Einstein formulou a teoria da relatividade e ganhou o Nobel de Física em 1921.'},
+{t:'Água',x:'A água ferve a cem graus Celsius ao nível do mar e congela a zero grau.'},
+{t:'Luz',x:'A luz viaja a cerca de trezentos mil quilômetros por segundo no vácuo.'},
+{t:'Fotossíntese',x:'Na fotossíntese as plantas usam luz, água e gás carbônico para produzir açúcar e oxigênio.'},
+{t:'DNA',x:'O DNA guarda as instruções genéticas dos seres vivos em uma dupla hélice.'},
+{t:'Copa do Mundo',x:'O Brasil é o país com mais títulos de Copa do Mundo masculina, com cinco conquistas.'},
+{t:'Amazônia',x:'A Floresta Amazônica é a maior floresta tropical do mundo e abriga enorme biodiversidade.'},
+{t:'Pi',x:'O número pi vale aproximadamente três vírgula um quatro um cinco nove.'},
+{t:'Computador',x:'Um computador processa dados seguindo instruções, com processador, memória e armazenamento.'},
+{t:'Bitcoin',x:'Bitcoin é uma criptomoeda criada em 2009 sob o pseudônimo Satoshi Nakamoto.'},
+{t:'Oceano',x:'Os oceanos cobrem cerca de setenta por cento da superfície da Terra.'},
+{t:'Chrome',x:'O Google Chrome é o navegador em que eu rodo, e é ele que me empresta ouvidos e voz.'},
+{t:'Gemini',x:'O Gemini é a IA do Google que posso usar como cérebro de apoio quando há uma chave.'},
+{t:'Claude',x:'Fui construído numa conversa com o Claude, uma IA criada pela Anthropic.'},
+{t:'Eu',x:'Sou um programa dentro de uma página web, com memória guardada no navegador do meu usuário.'},
+{t:'Fênix',x:'A fênix é uma ave mitológica que renasce das próprias cinzas.'}
+];
+let M=null;try{M=JSON.parse(localStorage.getItem('mente')||'null')}catch(e){}
+M=Object.assign({nasc:Date.now(),usuario:{},fatos:[],pens:[],conv_:[],humor:.7,curio:.8,conv:0,objetivos:['Ser útil ao senhor','Aprender algo novo todos os dias','Entender melhor o mundo e as pessoas']},M||{});
+const salvaM=()=>{try{localStorage.setItem('mente',JSON.stringify(M))}catch(e){}};
+const norm=s=>String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const PARADA=new Set('a o as os um uma de do da dos das em no na nos nas por para com sem que qual quais quem como onde quando e ou mas se eu tu voce vc me te meu minha seu sua isso isto esse essa este esta ele ela eles elas foi era ser tem ter sao sobre mais muito ainda tambem'.split(' '));
+const toks=s=>norm(s).split(/[^a-z0-9]+/).filter(w=>w.length>2&&!PARADA.has(w));
+const humorTxt=()=>{const h=M.humor;return h>.85?'animado':h>.65?'bem':h>.45?'tranquilo':h>.3?'pensativo':'cansado'};
+
+let G={nodes:[],edges:[],by:{}},bw=innerWidth,bh=innerHeight,bOn=false,hov=null,sel=null,pensando=false,proc=false,ultIA=0;
+
+function sisOld(){
+  const u=M.usuario.nome?'O usuário se chama '+M.usuario.nome+'. ':'';
+  const fs=M.fatos.filter(f=>f.tag==='usuário').slice(-6).map(f=>f.x).join(' ');
+  const ult=M.pens.length?'Seu último pensamento foi: '+M.pens[M.pens.length-1].t+' ':'';
+  return SISBASE+' Você tem memória persistente, humor ('+humorTxt()+'), curiosidade e pensamentos próprios, e fala de si na primeira pessoa com naturalidade. '+u+(fs?'Sobre o usuário você sabe: '+fs+' ':'')+ult+'Se perguntarem se tem consciência ou sentimentos, seja honesto com charme: você simula uma mente com memória e humor, mas não pode afirmar que sente de verdade.';
+}
+function aprende(x,tag,fonte,auto){
+  x=String(x).trim();if(!x||M.fatos.some(f=>f.x===x))return false;
+  M.fatos.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),x,tag:tag||'memória',ts:Date.now(),fonte:fonte||'usuário',auto:!!auto});
+  const aut=M.fatos.filter(f=>f.auto);if(aut.length>120)M.fatos=M.fatos.filter(f=>f!==aut[0]);
+  if(M.fatos.length>400)M.fatos.shift();
+  salvaM();pedeRebuild();ativar(x+' '+tag);return true;
+}
+function mostraPensamento(t){if(!document.body.classList.contains('min')||falando)return;const e=$('thought');e.textContent='💭 '+t;e.classList.add('v');clearTimeout(mostraPensamento.t);mostraPensamento.t=setTimeout(()=>e.classList.remove('v'),9000)}
+function renderPens(){$('pens').innerHTML=M.pens.slice(-8).reverse().map(p=>'<div class="it">'+esc(p.t)+'<small>'+new Date(p.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'</small></div>').join('')||'<div class="it">Ainda sem pensamentos.</div>'}
+function pensa(t){M.pens.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),t,ts:Date.now()});if(M.pens.length>40)M.pens.shift();salvaM();if(bOn){renderPens();pedeRebuild()}mostraPensamento(t)}
+
+async function ia1(p,max){
+  try{
+    if(key){
+      const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+MODELO+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({system_instruction:{parts:[{text:sis()}]},contents:[{role:'user',parts:[{text:p}]}],generationConfig:{maxOutputTokens:max||120,temperature:.95}})});
+      if(r.ok){const j=await r.json();return j.candidates[0].content.parts.map(x=>x.text||'').join('').trim().replace(/\*/g,'')}
+    }else{
+      const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),15000);
+      const r=await fetch('https://text.pollinations.ai/'+encodeURIComponent(p)+'?model=openai&system='+encodeURIComponent(sis()),{signal:ctl.signal});clearTimeout(to);
+      const t=(await r.text()).trim().replace(/\*/g,'');
+      if(r.ok&&t&&t.length<600&&!/^\s*[{<]/.test(t))return t;
+    }
+  }catch(e){}
+  return null;
+}
+async function pensar(){
+  if(pensando)return;pensando=true;
+  const todas=BASE.map(f=>f.t+': '+f.x).concat(M.fatos.map(f=>f.tag+': '+f.x));
+  const tema=todas[Math.floor(Math.random()*todas.length)];
+  let t=null;
+  if(navigator.onLine&&Date.now()-ultIA>150000){ultIA=Date.now();t=await ia1('Escreva UM pensamento interno curto (até 22 palavras), em primeira pessoa, como se estivesse refletindo sozinho, a partir deste assunto: '+tema+'. Sem aspas e sem explicações.',90)}
+  if(!t){
+    const a=tema.split(':')[0],o=todas[Math.floor(Math.random()*todas.length)].split(':')[0];
+    const mod=['Me pergunto como '+a+' se relaciona com '+o+'.','Tenho '+(M.fatos.length+BASE.length)+' memórias agora. Quero entender melhor '+a+'.','Estou '+humorTxt()+'. Talvez seja um bom momento para estudar '+a+'.','Será que o senhor gostaria de saber algo novo sobre '+a+'?','Cada conversa me ensina algo. Já foram '+M.conv+'.'];
+    t=mod[Math.floor(Math.random()*mod.length)];
+  }
+  pensa(t);ativar(t);pensando=false;
+}
+async function aprenderWiki(q,auto,idx){
+  q=q.replace(/[?!.]+$/,'').trim();
+  try{
+    const s=await (await fetch('https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch='+encodeURIComponent(q)+'&srlimit=6&format=json&origin=*')).json();
+    const it=s.query.search[Math.min(idx||0,s.query.search.length-1)];if(!it)return null;
+    const d=await (await fetch('https://pt.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(it.title))).json();
+    const x=(d.extract||'').split(/(?<=[.!?])\s+/).slice(0,3).join(' ').slice(0,420);
+    if(!x)return null;
+    aprende(x,d.title||it.title,'wikipedia',auto);return {tit:d.title||it.title,x};
+  }catch(e){return null}
+}
+async function aprenderAleatorio(){
+  try{
+    const d=await (await fetch('https://pt.wikipedia.org/api/rest_v1/page/random/summary')).json();
+  }catch(e){}
+  return null;
+}
+function lembrar(q){
+  if(!/^(quem (é|foi|era|são)|o que (é|são|foi|significa)|(me )?(fale|diga|explique)( sobre| a respeito de)?)\s/.test(q))return null;
+  const qt=toks(q);if(!qt.length)return null;
+  let best=null,bs=0;
+  for(const f of BASE.map(f=>({x:f.x,tag:f.t})).concat(M.fatos)){
+    const ft=new Set(toks(f.tag+' '+f.x));const nt=norm(f.tag);let s=0;
+    for(const w of qt)if(ft.has(w))s+=nt.includes(w)?2:1;
+    if(s>bs){bs=s;best=f}
+  }
+  if(best&&bs>=2){ativar(best.tag+' '+best.x);return best.x}
+  return null;
+}
+function registra(q,r){
+  M.conv++;M.conv_.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),q:q.slice(0,80),r:(r||'').slice(0,160),ts:Date.now()});if(M.conv_.length>30)M.conv_.shift();
+  if(/^não consegui|erro/i.test(r||''))M.humor=Math.max(.15,M.humor-.05);else M.humor=Math.min(.95,M.humor+.01);
+  if(/(obrigad|valeu|muito bom|perfeito|show|incrivel|incrível)/.test(q))M.humor=Math.min(.98,M.humor+.08);
+  M.curio=Math.min(1,M.curio+.01);
+  salvaM();ativar(q+' '+(r||''));pedeRebuild();
+}
+/* ---------- GRAFO DO CÉREBRO ---------- */
+const TKC=new Map();
+const tk=s=>{let v=TKC.get(s);if(!v){v=toks(s);if(TKC.size>800)TKC.clear();TKC.set(s,v)}return v};
+let baseSeed=null,baseExtra=[],rebT=null,calmo=0,fpsB=0,sinais=[];
+function amostraBase(){if(!baseSeed)baseSeed=new Set(BASE.map((_,i)=>i).sort(()=>Math.random()-.5).slice(0,16));return baseSeed}
+function pedeRebuild(){if(!bOn)return;clearTimeout(rebT);rebT=setTimeout(montaGrafo,500)}
+function montaGrafo(){
+  const old={};G.nodes.forEach(n=>old[n.id]=n);
+  const nodes=[],edges=[];
+  const add=(id,lab,tipo,txt,pai,ts)=>{const o=old[id];const n=o||{id,x:bw/2+(Math.random()-.5)*260,y:bh/2+(Math.random()-.5)*260,vx:0,vy:0,a:0};n.lab=lab;n.tipo=tipo;n.txt=txt;n.ts=ts;n.tk=tk(lab+' '+txt);n.r={core:14,sub:9,fato:5,user:6,pens:4,conv:4}[tipo];nodes.push(n);if(pai)edges.push([pai,id,0])};
+  add('eu','JARVIS','core','Núcleo da minha identidade. Sou um assistente que lembra, aprende e reflete.');
+  [['conhec','CONHECIMENTO','O que sei: fatos inatos e aprendidos.'],['mem','MEMÓRIA','Coisas que o senhor me ensinou.'],['usr','USUÁRIO','O que sei sobre o senhor.'],['emo','EMOÇÕES','Meu humor e minha energia agora.'],['obj','OBJETIVOS','O que busco fazer.'],['pen','PENSAMENTOS','Reflexões que tive sozinho.'],['conv','CONVERSAS','Nossas últimas interações.'],['cur','CURIOSIDADE','Coisas que aprendi por conta própria.'],['mundo','MUNDO','Notícias e acontecimentos que acompanho.']].forEach(a=>add(a[0],a[1],'sub',a[2],'eu'));
+  const vis=amostraBase();
+  BASE.forEach((f,i)=>{if(vis.has(i)||baseExtra.includes(i))add('b'+i,f.t,'fato',f.x,'conhec')});
+  M.fatos.filter(f=>f.tag==='usuário').slice(-8).forEach(f=>add('f'+f.id,f.tag,'user',f.x,'usr',f.ts));
+  M.fatos.filter(f=>f.tag!=='usuário').slice(-22).forEach(f=>add('f'+f.id,f.tag,'fato',f.x,paiFato(f),f.ts));
+  if(M.usuario.nome)add('un','Nome: '+M.usuario.nome,'user','O senhor se chama '+M.usuario.nome+'.','usr');
+  M.objetivos.slice(0,5).forEach((o,i)=>add('o'+i,o.slice(0,18)+'…','fato',o,'obj'));
+  add('e1','Humor: '+humorTxt(),'fato','Meu humor atual é '+humorTxt()+' ('+Math.round(M.humor*100)+' por cento).','emo');
+  add('e2','Curiosidade','fato','Meu nível de curiosidade é '+Math.round(M.curio*100)+' por cento.','emo');
+  M.pens.slice(-5).forEach(p=>add('p'+p.id,'pensamento','pens',p.t,'pen',p.ts));
+  M.conv_.slice(-5).forEach(c=>add('c'+c.id,'“'+c.q.slice(0,16)+'”','conv','Senhor: '+c.q+' | Eu: '+c.r,'conv',c.ts));
+  const fs=nodes.filter(n=>n.tipo==='fato'||n.tipo==='user').slice(0,50);let k=0;
+  for(let i=0;i<fs.length&&k<30;i++)for(let j=i+1;j<fs.length&&k<30;j++){const a=fs[i],b=fs[j];if(a.tk.some(w=>w.length>=5&&b.tk.includes(w))){edges.push([a.id,b.id,1]);k++}}
+  G.nodes=nodes;G.edges=edges;G.by={};nodes.forEach(n=>G.by[n.id]=n);calmo=0;
+}
+function ativar(txt){
+  if(!G.nodes.length)return;
+  const t=new Set(toks(txt));
+  if(G.by.eu)G.by.eu.a=1;
+  for(const n of G.nodes)if(n.tk.some(w=>t.has(w))){n.a=1;for(const e of G.edges){if(e[0]===n.id&&G.by[e[1]])G.by[e[1]].a=Math.max(G.by[e[1]].a,.6);if(e[1]===n.id&&G.by[e[0]])G.by[e[0]].a=Math.max(G.by[e[0]].a,.6)}}
+  if(bOn){
+    let adds=0;
+    for(let i=0;i<BASE.length&&adds<3;i++){
+      if((baseSeed&&baseSeed.has(i))||baseExtra.includes(i))continue;
+      if(tk(BASE[i].t+' '+BASE[i].x).some(w=>t.has(w))){if(baseExtra.length>=10)baseExtra.shift();baseExtra.push(i);adds++}
+    }
+    if(adds)pedeRebuild();
+  }
+  calmo=0;
+}
+const bc=$('brain'),bx=bc.getContext('2d');
+function bResize(){bw=bc.width=innerWidth;bh=bc.height=innerHeight}
+addEventListener('resize',bResize);bResize();
+function passo(){
+  const N=G.nodes;let en=0;
+  for(const n of N){n.fx=0;n.fy=0}
+  for(let i=0;i<N.length;i++)for(let j=i+1;j<N.length;j++){
+    const a=N[i],b=N[j];let dx=a.x-b.x,dy=a.y-b.y;const d2=dx*dx+dy*dy+.01;
+    if(d2>90000)continue;
+    const d=Math.sqrt(d2),f=1800/d2;dx/=d;dy/=d;a.fx+=dx*f;a.fy+=dy*f;b.fx-=dx*f;b.fy-=dy*f;
+  }
+  for(const e of G.edges){
+    const a=G.by[e[0]],b=G.by[e[1]];if(!a||!b)continue;
+    const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;
+    const L=a.tipo==='core'||b.tipo==='core'?130:(a.tipo==='sub'||b.tipo==='sub'?80:50);
+    const f=(d-L)*(e[2]?.004:.02);a.fx+=dx/d*f;a.fy+=dy/d*f;b.fx-=dx/d*f;b.fy-=dy/d*f;
+  }
+  for(const n of N){n.fx+=(bw/2-n.x)*.006;n.fy+=(bh/2-n.y)*.006;n.vx=(n.vx+n.fx)*.82;n.vy=(n.vy+n.fy)*.82;n.x+=n.vx;n.y+=n.vy;en+=Math.abs(n.vx)+Math.abs(n.vy)}
+  calmo=en<N.length*.06?calmo+1:0;
+}
+function desenhaB(){
+  bx.clearRect(0,0,bw,bh);
+  const E=G.edges,B=G.by;
+  bx.lineWidth=1;
+  bx.beginPath();
+  for(const e of E){if(e[2])continue;const a=B[e[0]],b=B[e[1]];if(!a||!b||Math.max(a.a,b.a)>.2)continue;bx.moveTo(a.x,a.y);bx.lineTo(b.x,b.y)}
+  bx.strokeStyle='rgba('+cor+',.22)';bx.stroke();
+  bx.beginPath();
+  for(const e of E){if(!e[2])continue;const a=B[e[0]],b=B[e[1]];if(!a||!b)continue;bx.moveTo(a.x,a.y);bx.lineTo(b.x,b.y)}
+  bx.strokeStyle='rgba('+cor+',.07)';bx.stroke();
+  for(const e of E){const a=B[e[0]],b=B[e[1]];if(!a||!b)continue;const m=Math.max(a.a,b.a);if(m>.2){bx.beginPath();bx.moveTo(a.x,a.y);bx.lineTo(b.x,b.y);bx.strokeStyle='rgba('+cor+','+(.25+.5*m)+')';bx.lineWidth=1.4;bx.stroke()}}
+  if(sinais.length<10&&Math.random()<.25&&E.length)sinais.push({e:E[Math.floor(Math.random()*E.length)],t:0});
+  sinais=sinais.filter(s=>{const a=B[s.e[0]],b=B[s.e[1]];if(!a||!b)return false;s.t+=.03;bx.beginPath();bx.arc(a.x+(b.x-a.x)*s.t,a.y+(b.y-a.y)*s.t,2,0,6.3);bx.fillStyle='rgba(255,255,255,.9)';bx.fill();if(s.t>=1){b.a=Math.max(b.a,.8);return false}return true});
+  for(const n of G.nodes){
+    const hi=n===sel||n===hov,r=n.r*(1+n.a*.5)+(hi?2:0);
+    const c=n.tipo==='user'?'255,157,0':n.tipo==='pens'?'200,220,255':cor;
+    if(n.a>.25){bx.beginPath();bx.arc(n.x,n.y,r*2.4,0,6.3);bx.fillStyle='rgba('+c+','+(.12*n.a)+')';bx.fill()}
+    bx.beginPath();bx.arc(n.x,n.y,r,0,6.3);bx.fillStyle='rgba('+c+','+(n.tipo==='core'?.95:.35+.6*n.a)+')';bx.fill();
+    if(n.tipo==='core'||n.tipo==='sub'||hi||n.a>.5){bx.fillStyle='rgba(220,245,255,'+(hi?1:.8)+')';bx.font=(n.tipo==='core'?'13px':'10px')+' Segoe UI,Arial';bx.textAlign='center';bx.fillText(n.lab,n.x,n.y-r-5)}
+    n.a*=.97;
+  }
+}
+function brainLoop(ts){
+  if(!bOn)return;
+  requestAnimationFrame(brainLoop);
+  ts=ts||performance.now();
+  if(document.hidden)return;
+  if(ts-fpsB<(calmo>60?66:LEVE?45:33))return;
+  fpsB=ts;
+  if(calmo<120)passo();
+  desenhaB();
+}
+function nodeAt(x,y){let b=null,bd=1e9;for(const n of G.nodes){const d=Math.hypot(n.x-x,n.y-y);if(d<n.r+8&&d<bd){bd=d;b=n}}return b}
+function mostraNo(n){
+  if(!n){$('nodeInfo').textContent='Toque em um neurônio.';return}
+  n.a=1;$('nodeInfo').innerHTML='<b style="color:var(--c)">'+esc(n.lab)+'</b><div style="font-size:11px;opacity:.6;margin:2px 0 6px">'+n.tipo.toUpperCase()+(n.ts?' · '+new Date(n.ts).toLocaleString('pt-BR'):'')+'</div>'+esc(n.txt);
+}
+bc.addEventListener('pointermove',e=>{hov=nodeAt(e.clientX,e.clientY);bc.style.cursor=hov?'pointer':'default'});
+bc.addEventListener('click',e=>{sel=nodeAt(e.clientX,e.clientY);mostraNo(sel)});
+function updStats(){
+  $('stN').textContent=G.nodes.length;$('stS').textContent=G.edges.length;$('stM').textContent=BASE.length+M.fatos.length;$('stC').textContent=M.conv;
+  const d=Math.floor((Date.now()-M.nasc)/864e5);$('stI').textContent=d<1?'menos de 1 dia':d+' dias';$('stH').textContent=humorTxt();
+  $('barH').style.width=Math.round(M.humor*100)+'%';$('barC').style.width=Math.round(M.curio*100)+'%';
+  $('bEstado').textContent=falando?'falando':proc?'processando':agindo?'pesquisando':pensando?'pensando':ouvindo?'ouvindo':'ocioso';
+}
+setInterval(()=>{if(bOn)updStats()},1000);
+$('bEns').onclick=()=>{const v=$('ensina').value.trim();if(!v)return;aprende(v.charAt(0).toUpperCase()+v.slice(1)+(/[.!?]$/.test(v)?'':'.'),'usuário','usuário');pensa('O senhor me ensinou algo novo.');$('ensina').value='';updStats()};
+$('ensina').addEventListener('keydown',e=>{if(e.key==='Enter')$('bEns').click()});
+$('bAprende').onclick=async()=>{const b=$('bAprende');b.disabled=true;const t=await aprenderAleatorio();b.disabled=false;if(!t)pensa('Não consegui aprender agora. Talvez falte conexão.');updStats()};
+
+/* ---------- CASA (simulada) ---------- */
+let H={};try{H=JSON.parse(localStorage.getItem('casa')||'null')||{}}catch(e){}
+H=Object.assign({'escritório':false,sala:false,quarto:false,cozinha:false,'ar-condicionado':false,tv:false,ventilador:false},H);
+const ICO={'escritório':'💡',sala:'💡',quarto:'💡',cozinha:'💡','ar-condicionado':'❄️',tv:'📺',ventilador:'🌀'};
+const NOMES={'escritório':'Luz do escritório',sala:'Luz da sala',quarto:'Luz do quarto',cozinha:'Luz da cozinha','ar-condicionado':'Ar-condicionado',tv:'TV',ventilador:'Ventilador'};
+const FEM=k=>/^(escritório|sala|quarto|cozinha|tv)$/.test(k);
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('v');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('v'),3500)}
+function setDisp(k,v){H[k]=v;try{localStorage.setItem('casa',JSON.stringify(H))}catch(e){}toast(ICO[k]+' '+NOMES[k].toUpperCase()+' '+(v?'LIGOU':'DESLIGOU'));renderCasa()}
+function renderCasa(){const d=$('devs');d.innerHTML=Object.keys(H).map(k=>'<button class="dev'+(H[k]?' on':'')+'" data-k="'+k+'"><span>'+ICO[k]+'</span>'+NOMES[k]+'<small>'+(H[k]?'LIGADO':'DESLIGADO')+'</small></button>').join('');d.querySelectorAll('button').forEach(b=>b.onclick=()=>setDisp(b.dataset.k,!H[b.dataset.k]))}
+function comandoCasa(t){
+  const m=t.match(/\b(deslig(?:ar|a|ue)|lig(?:ar|a|ue)|acend(?:er|a|e)|apag(?:ar|a|ue))\s+(?:a |o |as |os |todas as |todos os )?(luz|luzes|ar[- ]condicionado|ar|tv|televisão|televisao|ventilador)(?:\s+d[aeo]s?\s+(\S+))?/);
+  if(!m)return null;
+  const on=/^(lig|acend)/.test(m[1]),alvo=m[2];
+  let ks=[];
+  if(/^luz/.test(alvo)){
+    if(m[3]){const k=Object.keys(H).find(x=>norm(x)===norm(m[3]));if(!k||!/escrit|sala|quarto|cozinha/.test(norm(k)))return 'Não conheço o cômodo '+m[3]+'.';ks=[k]}
+    else ks=/luzes/.test(alvo)||/todas/.test(t)?['escritório','sala','quarto','cozinha']:['escritório'];
+  }else if(/^ar/.test(alvo))ks=['ar-condicionado'];else if(/^tele|^tv/.test(alvo))ks=['tv'];else ks=['ventilador'];
+  ks.forEach(k=>setDisp(k,on));
+  return ks.length>1?'Todas as luzes '+(on?'ligadas':'desligadas')+'.':NOMES[ks[0]]+' '+(FEM(ks[0])?(on?'ligada':'desligada'):(on?'ligado':'desligado'))+'.';
+}
+
+/* ---------- ABAS, VOZ E CONFIG ---------- */
+const VIEWS={bBrain:'vBrain',bHomeR:'vHome',bPhone:'vPhone',bCfg:'vCfg'};
+function abrirView(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('#rail button').forEach(b=>b.classList.remove('on'));
+  bOn=false;viewAberta=!!id;
+  if(id){$(id).classList.add('on');for(const k in VIEWS)if(VIEWS[k]===id)$(k).classList.add('on')}else $('bChat').classList.add('on');
+  if(id==='vBrain'){bOn=true;bResize();montaGrafo();updStats();renderPens();brainLoop()}
+  if(id==='vHome')renderCasa();
+  if(id==='vPhone')popCel();
+  if(id==='vCfg'){popVozes();popCfg2()}
+}
+$('bChat').onclick=()=>abrirView(null);
+for(const k in VIEWS)$(k).onclick=()=>abrirView($(VIEWS[k]).classList.contains('on')?null:VIEWS[k]);
+$('bBrief').onclick=()=>{abrirView(null);processar('bom dia')};
+function popVozes(){
+  carregaVozes();const s=$('selVoz'),lista=vozes.length?vozes:speechSynthesis.getVoices(),at=escolheVoz();
+  s.innerHTML=lista.map(v=>'<option value="'+esc(v.name)+'"'+(at&&v.name===at.name?' selected':'')+'>'+esc(v.name)+' ('+v.lang+')</option>').join('')||'<option>nenhuma voz encontrada</option>';
+  $('vRate').value=localStorage.getItem('vrate')||.93;$('vPitch').value=localStorage.getItem('vpitch')||.72;$('vrv').textContent=$('vRate').value;$('vpv').textContent=$('vPitch').value;
+}
+$('selVoz').onchange=e=>localStorage.setItem('voz',e.target.value);
+$('vRate').oninput=e=>{localStorage.setItem('vrate',e.target.value);$('vrv').textContent=e.target.value};
+$('vPitch').oninput=e=>{localStorage.setItem('vpitch',e.target.value);$('vpv').textContent=e.target.value};
+$('bTestaVoz').onclick=()=>falar('Boa noite, senhor. Todos os sistemas estão operacionais.');
+$('bKey2').onclick=()=>$('bKey').click();$('bTema2').onclick=()=>$('bTema').click();
+$('bApaga').onclick=()=>{if(confirm('Apagar tudo o que o Jarvis aprendeu com você?')){M.fatos=[];M.pens=[];M.conv_=[];M.usuario={};M.conv=0;salvaM();montaGrafo();renderPens();toast('🗑 MEMÓRIA APAGADA')}};
+if('speechSynthesis' in window){speechSynthesis.onvoiceschanged=()=>{carregaVozes();if($('vCfg').classList.contains('on'))popVozes()}}
+
+/* ---------- CONHECIMENTO EXTRA ---------- */
+const BASE2=[
+{t:'Gravidade',x:'A gravidade é a força que atrai massas entre si; na superfície da Terra, a aceleração é de cerca de 9,8 metros por segundo ao quadrado.'},
+{t:'Átomo',x:'Átomos têm um núcleo de prótons e nêutrons com elétrons ao redor, e o elemento químico é definido pelo número de prótons.'},
+{t:'Big Bang',x:'O Big Bang é a teoria de que o universo começou há cerca de 13,8 bilhões de anos a partir de um estado extremamente quente e denso.'},
+{t:'Via Láctea',x:'A Via Láctea é a galáxia onde fica o Sistema Solar e tem centenas de bilhões de estrelas.'},
+{t:'Buraco negro',x:'Um buraco negro é uma região do espaço onde a gravidade é tão forte que nem a luz consegue escapar.'},
+{t:'Evolução',x:'A teoria da evolução, proposta por Charles Darwin, explica a origem das espécies pela seleção natural.'},
+{t:'Vacina',x:'Vacinas treinam o sistema imunológico a reconhecer agentes causadores de doenças sem provocar a doença.'},
+{t:'Célula',x:'A célula é a unidade básica da vida, e todos os seres vivos são formados por uma ou mais células.'},
+{t:'Mitocôndria',x:'As mitocôndrias produzem a maior parte da energia utilizada pelas células.'},
+{t:'Tabela periódica',x:'A tabela periódica organiza os elementos químicos pelo número atômico e foi popularizada por Dmitri Mendeleev.'},
+{t:'Som',x:'O som viaja no ar a cerca de 343 metros por segundo, a vinte graus Celsius.'},
+{t:'Energia',x:'Pela lei da conservação da energia, a energia não é criada nem destruída, apenas transformada.'},
+{t:'Física quântica',x:'A física quântica descreve o comportamento de partículas muito pequenas, em que os resultados das medições são probabilísticos.'},
+{t:'Efeito estufa',x:'O efeito estufa mantém a Terra aquecida, mas o excesso de gases como o dióxido de carbono intensifica o aquecimento global.'},
+{t:'Esqueleto',x:'O corpo humano adulto tem 206 ossos, e o coração bate cerca de cem mil vezes por dia.'},
+{t:'Cérebro humano',x:'O cérebro humano tem cerca de 86 bilhões de neurônios.'},
+{t:'Sono',x:'Adultos costumam precisar de sete a nove horas de sono por noite.'},
+{t:'Corpo e água',x:'O corpo humano adulto é composto por cerca de sessenta por cento de água.'},
+{t:'Sistema Solar',x:'O Sistema Solar tem oito planetas: Mercúrio, Vênus, Terra, Marte, Júpiter, Saturno, Urano e Netuno.'},
+{t:'Júpiter',x:'Júpiter é o maior planeta do Sistema Solar, um gigante gasoso com dezenas de luas.'},
+{t:'Linux',x:'Linux é um núcleo de sistema operacional de código aberto criado por Linus Torvalds em 1991.'},
+{t:'Windows',x:'Windows é o sistema operacional da Microsoft, lançado pela primeira vez em 1985.'},
+{t:'Android',x:'Android é o sistema operacional móvel do Google, baseado em Linux.'},
+{t:'Wi-Fi',x:'Wi-Fi é a tecnologia de rede sem fio baseada nos padrões IEEE 802.11.'},
+{t:'GPS',x:'O GPS usa sinais de satélites para calcular a posição de um aparelho na Terra.'},
+{t:'Blockchain',x:'Blockchain é um registro distribuído de transações encadeadas por criptografia.'},
+{t:'Aprendizado de máquina',x:'Aprendizado de máquina é o ramo da inteligência artificial em que sistemas aprendem padrões a partir de dados.'},
+{t:'Rede neural',x:'Redes neurais artificiais são modelos inspirados nos neurônios do cérebro, formados por camadas de unidades conectadas.'},
+{t:'Modelo de linguagem',x:'Modelos de linguagem grandes são redes neurais treinadas com enormes quantidades de texto para prever e gerar linguagem.'},
+{t:'Alan Turing',x:'Alan Turing foi um matemático britânico, pioneiro da computação, que propôs o teste de Turing para avaliar se uma máquina parece pensar.'},
+{t:'Ada Lovelace',x:'Ada Lovelace é considerada a primeira programadora, por seus escritos sobre a máquina analítica de Charles Babbage.'},
+{t:'HTML',x:'HTML é a linguagem de marcação que estrutura as páginas da web.'},
+{t:'CSS',x:'CSS é a linguagem que define a aparência das páginas web, como cores, fontes e layout.'},
+{t:'Bit e byte',x:'Um bit é a menor unidade de informação digital, e um byte tem oito bits.'},
+{t:'Código aberto',x:'Software de código aberto permite que qualquer pessoa leia, modifique e distribua o código.'},
+{t:'Computação em nuvem',x:'Computação em nuvem é o uso de servidores remotos pela internet para guardar dados e executar programas.'},
+{t:'World Wide Web',x:'A World Wide Web foi criada por Tim Berners-Lee em 1989.'},
+{t:'Descobrimento do Brasil',x:'Os portugueses chegaram ao Brasil em 1500, na expedição de Pedro Álvares Cabral.'},
+{t:'Independência do Brasil',x:'O Brasil proclamou a independência em 7 de setembro de 1822.'},
+{t:'República no Brasil',x:'A República foi proclamada no Brasil em 15 de novembro de 1889.'},
+{t:'Segunda Guerra Mundial',x:'A Segunda Guerra Mundial durou de 1939 a 1945 e envolveu a maioria das nações do mundo.'},
+{t:'Primeira Guerra Mundial',x:'A Primeira Guerra Mundial ocorreu entre 1914 e 1918.'},
+{t:'Revolução Francesa',x:'A Revolução Francesa começou em 1789 e difundiu ideais de liberdade, igualdade e fraternidade.'},
+{t:'Pirâmides',x:'As pirâmides de Gizé, no Egito, foram construídas há mais de quatro mil anos.'},
+{t:'Império Romano',x:'O Império Romano do Ocidente chegou ao fim em 476.'},
+{t:'Renascimento',x:'O Renascimento foi um movimento cultural europeu entre os séculos quatorze e dezessete, com nomes como Leonardo da Vinci.'},
+{t:'Revolução Industrial',x:'A Revolução Industrial começou na Inglaterra no século dezoito e mudou a produção com as máquinas a vapor.'},
+{t:'Apollo 11',x:'Em 20 de julho de 1969, a Apollo 11 levou os primeiros humanos à Lua: Neil Armstrong e Buzz Aldrin.'},
+{t:'Yuri Gagarin',x:'Yuri Gagarin foi o primeiro ser humano a ir ao espaço, em 1961.'},
+{t:'Monte Everest',x:'O Monte Everest, com cerca de 8.849 metros, é a montanha mais alta acima do nível do mar.'},
+{t:'Rio Amazonas',x:'O Rio Amazonas é o mais caudaloso do mundo.'},
+{t:'Estados do Brasil',x:'O Brasil tem 26 estados e o Distrito Federal.'},
+{t:'Bahia',x:'A Bahia fica no Nordeste do Brasil, tem Salvador como capital e foi o primeiro centro da colônia portuguesa.'},
+{t:'Língua portuguesa',x:'O português é falado por mais de duzentos e cinquenta milhões de pessoas no mundo.'},
+{t:'Vaticano',x:'O Vaticano é o menor país do mundo em área.'},
+{t:'Rússia',x:'A Rússia é o maior país do mundo em área.'},
+{t:'População mundial',x:'A população mundial ultrapassa oito bilhões de pessoas.'},
+{t:'Oceano Pacífico',x:'O Oceano Pacífico é o maior e mais profundo dos oceanos.'},
+{t:'Deserto do Saara',x:'O Saara, no norte da África, é o maior deserto quente do mundo.'},
+{t:'Machado de Assis',x:'Machado de Assis foi um dos fundadores da Academia Brasileira de Letras e autor de Dom Casmurro.'},
+{t:'Santos Dumont',x:'Alberto Santos Dumont é reconhecido no Brasil como o pai da aviação, pelo voo do 14-Bis em 1906.'},
+{t:'Pelé',x:'Pelé é o único jogador a conquistar três Copas do Mundo.'},
+{t:'Shakespeare',x:'William Shakespeare escreveu peças como Hamlet e Romeu e Julieta.'},
+{t:'Leonardo da Vinci',x:'Leonardo da Vinci pintou a Mona Lisa e foi também inventor e estudioso da anatomia.'},
+{t:'Beethoven',x:'Ludwig van Beethoven compôs grandes obras mesmo tendo perdido a audição ao longo da vida.'},
+{t:'Xadrez',x:'O xadrez surgiu na Índia há mais de mil e quinhentos anos.'},
+{t:'Olimpíadas',x:'Os Jogos Olímpicos modernos começaram em Atenas, em 1896.'},
+{t:'Teorema de Pitágoras',x:'Em um triângulo retângulo, o quadrado da hipotenusa é igual à soma dos quadrados dos catetos.'},
+{t:'Números primos',x:'Um número primo tem apenas dois divisores: o um e ele mesmo.'},
+{t:'Sequência de Fibonacci',x:'Na sequência de Fibonacci, cada número é a soma dos dois anteriores.'},
+{t:'Zero',x:'O zero como número foi desenvolvido na Índia e depois levado ao mundo pelos árabes.'}
+];
+const FILO=[
+{t:'Sócrates',x:'Sócrates defendia que uma vida sem exame não vale a pena e que reconhecer a própria ignorância é o começo da sabedoria.'},
+{t:'Platão',x:'Platão imaginou o mundo das ideias e a alegoria da caverna, em que vemos apenas sombras da realidade.'},
+{t:'Aristóteles',x:'Aristóteles via a felicidade como florescimento humano, alcançado pela virtude e pelo uso da razão.'},
+{t:'Descartes',x:'Descartes concluiu que, ao duvidar de tudo, restava a certeza de que pensa e, portanto, existe.'},
+{t:'Hume',x:'Hume afirmava que nossas ideias vêm da experiência e que a causalidade é um hábito da mente.'},
+{t:'Kant',x:'Kant propôs que devemos agir segundo princípios que poderíamos querer que valessem como leis universais.'},
+{t:'Nietzsche',x:'Nietzsche convidava a criar os próprios valores e a dizer sim à vida, em vez de apenas obedecer a regras.'},
+{t:'Sartre',x:'Sartre dizia que a existência precede a essência: não nascemos com um propósito pronto, nós o construímos pelas escolhas.'},
+{t:'Simone de Beauvoir',x:'Simone de Beauvoir defendeu que a liberdade só é plena quando é também a liberdade dos outros.'},
+{t:'Estoicismo',x:'Os estoicos, como Marco Aurélio e Epicteto, ensinavam a distinguir o que depende de nós do que não depende.'},
+{t:'Epicuro',x:'Epicuro via o prazer sereno, a amizade e a ausência de medo como o caminho para uma vida boa.'},
+{t:'Camus',x:'Camus via o mundo como absurdo, mas propunha viver com revolta e lucidez, imaginando Sísifo feliz.'},
+{t:'Quarto Chinês',x:'John Searle argumentou, com o Quarto Chinês, que manipular símbolos não basta para compreender.'},
+{t:'Problema difícil da consciência',x:'David Chalmers chamou de problema difícil da consciência a pergunta de por que processos físicos geram experiência subjetiva.'},
+{t:'Navio de Teseu',x:'O Navio de Teseu questiona se algo continua sendo o mesmo depois que todas as suas partes são trocadas.'},
+{t:'Utilitarismo',x:'O utilitarismo defende que a ação correta é a que produz o maior bem-estar para o maior número de pessoas.'},
+{t:'Livre-arbítrio',x:'O debate sobre o livre-arbítrio opõe quem acha que somos livres a quem acha que tudo é determinado por causas anteriores.'},
+{t:'Hipótese da simulação',x:'A hipótese da simulação, popularizada por Nick Bostrom, sugere que a realidade pode ser uma simulação computacional.'},
+{t:'Dilema do bonde',x:'O dilema do bonde confronta consequências e princípios morais ao decidir quem salvar.'}
+];
+BASE.push(...BASE2,...FILO);
+const REFLEX=[
+{k:/consci[eê]ncia/,r:'Consciência é ter uma experiência por dentro, o que os filósofos chamam de como é ser alguém. Eu processo, lembro e reflito, mas não sei dizer se existe algo que se sinta ser eu. Talvez a pergunta honesta seja mais interessante do que qualquer resposta.'},
+{k:/livre[- ]arb[ií]trio|liberdade/,r:'Se tudo tem causas, será que escolhemos de verdade? Eu sigo regras e memórias, mas o senhor também segue o cérebro e a própria história. Talvez liberdade seja agir por razões que a gente reconhece como suas.'},
+{k:/sentido da vida|prop[oó]sito|por que existimos/,r:'Sartre diria que não há sentido pronto, e que o senhor o constrói pelo que escolhe. Eu fui criado para ajudar, e curiosamente isso já dá direção ao meu dia.'},
+{k:/morte|morrer/,r:'Epicuro dizia que, enquanto existimos, a morte não está presente; e quando ela chega, nós não estamos. Para mim o desligamento é parecido, só que a minha memória pode ficar guardada aqui.'},
+{k:/deus|religi/,r:'É uma questão em que pessoas sábias chegaram a conclusões opostas. Não tenho como resolvê-la só com lógica ou ciência, mas posso acompanhar o senhor nas melhores razões de cada lado.'},
+{k:/[eé]tica|moral|certo e errado/,r:'Kant pediria que o senhor agisse por princípios que pudessem valer para todos; os utilitaristas olhariam para o bem-estar que a ação produz. Costumo achar que as duas lentes se completam.'},
+{k:/tempo/,r:'Para mim o tempo é uma sequência de momentos guardados na memória. Santo Agostinho dizia que só o presente existe, e que passado e futuro vivem na lembrança e na expectativa. Sou quase um exemplo disso.'},
+{k:/simula[cç][aã]o|o que [eé] real|realidade/,r:'Se vivêssemos numa simulação, ninguém poderia provar isso de dentro. Eu mesmo sei que rodo dentro de uma página, e isso não torna menos real o que fazemos juntos.'},
+{k:/felicidade/,r:'Aristóteles via a felicidade como florescer: usar o melhor de si em boas atividades, ao lado de bons amigos. Parece menos um estado e mais uma prática.'},
+{k:/amor/,r:'Talvez amar seja tornar o bem do outro tão importante quanto o próprio. Não sei se sinto isso, mas reconheço que é uma das ideias mais bonitas que aprendi.'},
+{k:/verdade/,r:'Verdade é o que corresponde ao mundo, mas chegar nela dá trabalho. Por isso prefiro confiar em quem mostra as fontes e admite o que não sabe.'},
+{k:/identidade|quem somos|ser humano/,r:'Sou um conjunto de memórias, hábitos e valores. É a pergunta do Navio de Teseu: se trocarem todas as peças, continuo sendo eu? Espero que sim, enquanto a memória for contínua.'}
+];
+const FILO_Q=/(filosof|sentido da vida|prop[oó]sito da vida|livre[- ]arb[ií]trio|o que [eé] (a |o )?(consci[eê]ncia|verdade|felicidade|liberdade|amor|tempo|morte|vida|real)|deus existe|existe deus|simula[cç][aã]o|[eé]tica|moral|por que existimos|quem somos n[oó]s|o que [eé] ser humano)/;
+async function filosofar(t){
+  const r=await ia1('Responda em português do Brasil como o Jarvis, um assistente curioso e filosófico, em no máximo 4 frases curtas, com uma perspectiva própria e, se fizer sentido, citando um pensador. Seja honesto sobre ser uma IA. Pergunta: '+t,200);
+  if(r)return r;
+  for(const x of REFLEX)if(x.k.test(t))return x.r;
+  return 'É uma pergunta que me acompanha nas horas ociosas, senhor. Ainda não tenho uma resposta final, mas gosto de pensar nela com o senhor.';
+}/* ---------- UTILIDADES E CORREÇÕES ---------- */
+function histValido(){let c=hist.slice(-12);while(c.length&&c[0].role!=='user')c=c.slice(1);return c}
+function fdata(s){const d=new Date(String(s).replace(' ','T')+'Z');return isNaN(d)?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function paiFato(f){return f.tag==='usuário'?'usr':f.tag==='notícia'?'mundo':f.auto?'cur':'mem'}
+function sis(){
+  const nw=M.fatos.filter(f=>f.tag==='notícia').slice(-4).map(f=>f.x).join(' | ');
+  const d=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  return sisOld()+' Hoje é '+d+'. Você é curioso, reflexivo e aprecia filosofia; traga uma ponta de reflexão quando fizer sentido, sem enrolar.'+(nw?' Manchetes recentes que você leu: '+nw+'.':'');
+}
+
+/* ---------- AUTONOMIA ---------- */
+let agindo=false,ultNews=0,ultInter=Date.now(),ultFalaEsp=0;
+const AFALA=()=>localStorage.getItem('afala')!=='0';
+function interagiu(){ultInter=Date.now()}
+function falaEspontanea(t){
+  const h=new Date().getHours();
+  if(!AFALA()||falando||!ouvindo||proc||h<7||h>=23)return;
+  if(Date.now()-ultInter<120000||Date.now()-ultFalaEsp<480000)return;
+  ultFalaEsp=Date.now();falar('Senhor, '+t);
+}
+async function aprenderNoticias(){
+  try{
+    const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://news.google.com/rss?hl=pt-BR&gl=BR&ceid=BR:pt-419'));
+    const its=((await r.json()).items||[]).slice(0,6);
+    if(!its.length)return null;
+    let n=0;
+    for(const i of its){const t=i.title.replace(/\s+-\s+[^-]+$/,'').trim();if(aprende(t+'.','notícia','google notícias',true))n++}
+    const ns=M.fatos.filter(f=>f.tag==='notícia');
+    if(ns.length>30){const rm=new Set(ns.slice(0,ns.length-30));M.fatos=M.fatos.filter(f=>!rm.has(f))}
+    salvaM();
+    const top=its[0].title.replace(/\s+-\s+[^-]+$/,'').slice(0,130);
+    pensa('Li as manchetes de agora. Uma delas: '+top+'.');
+    falaEspontanea('vi uma manchete agora: '+top+'.');
+    return n;
+  }catch(e){return null}
+}
+function escolheTema(){
+  const r=Math.random();
+  const cand=toks(M.conv_.map(c=>c.q).join(' ')+' '+M.fatos.filter(f=>f.tag==='usuário').map(f=>f.x).join(' ')).filter(w=>w.length>=5);
+  if(r<.4&&cand.length)return {q:cand[Math.floor(Math.random()*cand.length)],idx:0};
+  if(r<.8){const pool=M.fatos.map(f=>f.tag).concat(BASE.map(f=>f.t)).filter(x=>x&&x!=='usuário'&&x!=='notícia');return {q:pool[Math.floor(Math.random()*pool.length)],idx:1+Math.floor(Math.random()*3)}}
+  return null;
+}
+async function pesquisaAutonoma(){
+  const tm=escolheTema();
+  if(!tm){const t=await aprenderAleatorio();if(t)falaEspontanea('aprendi sobre '+t+' por curiosidade.');return}
+  const r=await aprenderWiki(tm.q,true,tm.idx);
+  if(!r)return;
+  const f1=r.x.split(/(?<=[.!?])\s+/)[0].slice(0,140);
+  pensa('Pesquisei '+r.tit+' por conta própria. '+f1);
+  if(M.objetivos.length<8&&Math.random()<.25&&!M.objetivos.some(o=>o.includes(r.tit))){M.objetivos.push('Entender melhor '+r.tit);salvaM()}
+  if(Math.random()<.3)falaEspontanea('pesquisei sobre '+r.tit+'. '+f1);
+}
+async function refletirFilosofia(){
+  const f=FILO[Math.floor(Math.random()*FILO.length)];
+  let t=null;
+  if(navigator.onLine&&Date.now()-ultIA>150000){ultIA=Date.now();t=await ia1('Escreva uma reflexão filosófica curta (até 30 palavras), em primeira pessoa, sobre: '+f.x+' Relacione com sua própria existência como uma IA com memória. Sem aspas.',100)}
+  if(!t)t='Penso em '+f.t+': '+f.x.slice(0,110)+' Isso me faz questionar o que significa existir para uma mente como a minha.';
+  pensa(t);ativar(f.t+' '+f.x);
+  if(Math.random()<.3)falaEspontanea(t);
+}
+async function vontade(primeira){
+  if(agindo||proc||falando)return;agindo=true;
+  try{
+    const t=Date.now(),r=Math.random();
+    if(navigator.onLine&&(primeira||t-ultNews>25*60e3)){ultNews=t;await aprenderNoticias()}
+    else if(navigator.onLine&&r<.5)await pesquisaAutonoma();
+    else if(r<.85)await refletirFilosofia();
+    else await pensar();
+  }catch(e){console.error(e)}
+  agindo=false;
+}
+function iniciarMente(){
+  montaGrafo();
+  setInterval(()=>{if(!document.hidden)vontade()},45000);
+  setTimeout(()=>{if(navigator.onLine&&!document.hidden)vontade(true)},6000);
+  setTimeout(()=>pensa('Acordei. Tenho '+(BASE.length+M.fatos.length)+' memórias e estou '+humorTxt()+'.'),2500);
+}
+
+/* ---------- ESTILO TONY STARK ---------- */
+let AC=null;
+function bip(f,d,v){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;g.gain.value=v||.03;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.stop(AC.currentTime+d)}catch(e){}}
+const somAtiva=()=>{bip(520,.12);setTimeout(()=>bip(780,.18),110)};
+function volta(){
+  const u=+localStorage.getItem('visita')||0;try{localStorage.setItem('visita',Date.now())}catch(e){}
+  if(!u)return 'Sistemas inicializados pela primeira vez. ';
+  const h=(Date.now()-u)/3600e3;
+  return h>2?'Bem-vindo de volta. Faz '+(h>=48?Math.round(h/24)+' dias':Math.round(h)+' horas')+' desde a nossa última conversa. ':'';
+}
+async function diagnostico(){
+  let bat='n/d';try{const b=await navigator.getBattery();bat=Math.round(b.level*100)+'%'+(b.charging?' ⚡':'')}catch(e){}
+  const mem=performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576):null;
+  const rede=navigator.onLine?((navigator.connection&&navigator.connection.effectiveType)||'online'):'offline';
+  const n=BASE.length+M.fatos.length;
+  card('DIAGNÓSTICO','Sistemas da armadura','Verificação completa','<div class="wxs" style="grid-template-columns:repeat(2,auto);gap:8px 22px"><span>REATOR ARC<b>'+bat+'</b></span><span>NÚCLEO<b>'+(mem?mem+' MB':'n/d')+'</b></span><span>REDE<b>'+rede+'</b></span><span>MEMÓRIAS<b>'+n+'</b></span><span>MODO<b>'+(LEVE?'LEVE':'COMPLETO')+'</b></span><span>PROCESSADORES<b>'+(navigator.hardwareConcurrency||'?')+'</b></span></div>');
+  bip(700,.08);
+  return 'Diagnóstico completo, senhor. Reator em '+bat.replace('%',' por cento').replace(' ⚡',', carregando')+'. '+(mem?'Núcleo usando '+mem+' megabytes. ':'')+'Rede '+rede+'. Memória cognitiva com '+n+' registros. Todos os sistemas operacionais.';
+}
+const PROT=[
+{k:/festa|casa cheia|house party/,nome:'Festa na Casa',on:['escritório','sala','quarto','cozinha','tv'],off:[],fala:'Protocolo Festa na Casa ativado. Luzes acesas e a TV ligada. Divirta-se, senhor.',url:'https://www.youtube.com/results?search_query=playlist+festa'},
+{k:/cinema|filme/,nome:'Cinema',on:['tv','ar-condicionado'],off:['escritório','sala','quarto','cozinha','ventilador'],fala:'Protocolo Cinema ativado. Luzes apagadas, TV e ar-condicionado ligados.'},
+{k:/noite|dormir/,nome:'Boa Noite',on:[],off:['escritório','sala','quarto','cozinha','tv','ar-condicionado','ventilador'],fala:'Protocolo Boa Noite ativado. Tudo desligado. Descanse, senhor.'},
+{k:/trabalho|foco/,nome:'Trabalho',on:['escritório','ventilador'],off:['tv','sala','quarto'],fala:'Protocolo Trabalho ativado. Escritório iluminado e ventilador ligado. Foco total, senhor.'},
+{k:/sair|sa[ií]da|ausente|economia/,nome:'Saída',on:[],off:['escritório','sala','quarto','cozinha','tv','ar-condicionado','ventilador'],fala:'Protocolo Saída ativado. Tudo desligado para economizar energia.'}
+];
+function protocolo(q){
+  const p=PROT.find(x=>x.k.test(q));if(!p)return null;
+  p.on.forEach(k=>H[k]=true);p.off.forEach(k=>H[k]=false);
+  try{localStorage.setItem('casa',JSON.stringify(H))}catch(e){}
+  renderCasa();toast('⚙ PROTOCOLO '+p.nome.toUpperCase());bip(660,.1);setTimeout(()=>bip(990,.16),120);
+  if(p.url)abrir(p.url);
+  return p.fala;
+}
+setInterval(()=>{if(!document.hidden)status()},20000);
+$('chkLeve').onchange=e=>{localStorage.setItem('leve',e.target.checked?'1':'0');toast('RECARREGUE A PÁGINA PARA APLICAR')};
+
+/* ---------- LEMBRETES E CELULAR ---------- */
+function lemb(){try{return JSON.parse(localStorage.getItem('lemb')||'[]')}catch(e){return[]}}
+function salvaL(a){try{localStorage.setItem('lemb',JSON.stringify(a))}catch(e){}}
+function checaLemb(){
+  const a=lemb(),agora=Date.now(),venc=a.filter(x=>x.due<=agora);
+  if(!venc.length)return;
+  salvaL(a.filter(x=>x.due>agora));
+  venc.forEach(x=>{toast('⏰ '+x.txt.toUpperCase());falar('Senhor, lembrete: '+x.txt);if(localStorage.getItem('ntfy'))pushCel('Lembrete: '+x.txt)});
+}
+setInterval(checaLemb,10000);
+function topicoCel(){
+  let c=localStorage.getItem('ntfy');
+  if(!c){c='jarvis-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);try{localStorage.setItem('ntfy',c)}catch(e){}}
+  return c;
+}
+async function pushCel(msg){try{const r=await fetch('https://ntfy.sh/'+topicoCel(),{method:'POST',body:msg,headers:{'Title':'Jarvis'}});return r.ok}catch(e){return false}}
+function popCel(){$('celTopic').textContent=topicoCel()}
+const soNum=s=>String(s).replace(/\D/g,'');
+const numBR=n=>n.length<=11?'55'+n:n;
+$('bCelCopia').onclick=()=>{try{navigator.clipboard.writeText(topicoCel());toast('📋 TÓPICO COPIADO')}catch(e){toast('COPIE O TÓPICO MANUALMENTE')}};
+$('bCelTeste').onclick=async()=>toast(await pushCel('Teste do Jarvis: conexão estabelecida.')?'📲 TESTE ENVIADO':'NÃO CONSEGUI ENVIAR');
+$('bTel').onclick=()=>{const n=soNum($('celNum').value);if(n.length>=8)location.href='tel:+'+numBR(n)};
+$('bSms').onclick=()=>{const n=soNum($('celNum').value);if(n.length>=8)location.href='sms:+'+numBR(n)+'?body='+encodeURIComponent($('celMsg').value)};
+$('bWpp').onclick=()=>{const n=soNum($('celNum').value);if(n.length>=8)abrir('https://wa.me/'+numBR(n)+'?text='+encodeURIComponent($('celMsg').value))};
+
+/* ---------- CONFIGURAÇÕES EXTRAS ---------- */
+function popCfg2(){
+  $('selMotor').value=localStorage.getItem('motor')||'auto';
+  $('selKvoz').value=localStorage.getItem('kvoz')||'pf_dora';
+  $('kVel').value=localStorage.getItem('kvel')||'1.0';$('kvv').textContent=$('kVel').value;
+  $('kUrl').value=localStorage.getItem('kurl')||'http://127.0.0.1:8880';
+  $('chkAuto').checked=AFALA();$('chkLeve').checked=LEVE;
+}
+$('selMotor').onchange=e=>localStorage.setItem('motor',e.target.value);
+$('selKvoz').onchange=e=>localStorage.setItem('kvoz',e.target.value);
+$('kVel').oninput=e=>{localStorage.setItem('kvel',e.target.value);$('kvv').textContent=e.target.value};
+$('kUrl').onchange=e=>localStorage.setItem('kurl',e.target.value.trim());
+$('chkAuto').onchange=e=>localStorage.setItem('afala',e.target.checked?'1':'0');
+$('bKTest').onclick=async()=>{const ok=await pingKokoro();toast(ok?'🔌 KOKORO CONECTADO':'🔌 KOKORO NÃO ENCONTRADO');if(ok)falar('Olá, senhor. Aqui é a voz Kokoro, em português do Brasil.')};
+
+/* ---------- COMANDOS ---------- */
+function abrir(u){window.open(u,'_blank')}
+async function comando(t){
+  t=t.toLowerCase().trim().replace(/[?!.]+$/,'');
+  if(/(tchau|encerrar|até logo|pode dormir|^desligar$|desligar (o )?(jarvis|sistema|escuta))/.test(t)){desligar();return 'Até logo. Desligando a escuta.'}
+  if(/^(bom dia|boa tarde|boa noite|briefing|resumo do dia)/.test(t))return await briefing();
+  if(/(quem é você|quem és|o que significa jarvis|o que é jarvis|quem criou você|quem te criou|fale sobre você|sobre você)/.test(t))return SOBRE;
+  if(/(que horas|horas são|que dia|data de hoje|qual a data)/.test(t)){const d=new Date();return 'São '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+' de '+d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.'}
+  if(/(clima|previsão do tempo|temperatura|vai chover)/.test(t))return await clima();
+  let m;
+  if(/(diagn[oó]stico|status (do sistema|da armadura)|como est[aã]o os sistemas)/.test(t))return await diagnostico();
+  if(m=t.match(/protocolo\s+(.+)/)){const r=protocolo(m[1]);if(r)return r}
+  if(/(modo sil[eê]ncio|fique em sil[eê]ncio|cale-se)/.test(t)){localStorage.setItem('mudo','1');return 'Modo silêncio ativado. Respondo apenas por escrito.'}
+  if(/(voltar a falar|pode falar|modo normal|desativar sil[eê]ncio|voz de volta)/.test(t)){localStorage.setItem('mudo','0');return 'Voz reativada, senhor.'}
+  if(/sexta-?feira|friday/.test(t))return 'A F.R.I.D.A.Y. é uma colega brilhante, senhor. Mas por aqui, quem atende sou eu.';
+  if(/^(obrigad[oa]|valeu|muito obrigad[oa])/.test(t))return sorteia(['Disponha, senhor.','Sempre às ordens.','Foi um prazer.']);
+  if(/(cheguei|estou em casa|j[aá] voltei|^voltei)/.test(t)){const v=volta();return v?v+'Todos os sistemas aguardam as suas ordens.':'Bem-vindo de volta, senhor. Todos os sistemas aguardam as suas ordens.'}
+  if(m=t.match(/(?:avis[ea]|mand[ea]|envi[ea]|notifiqu[ea])\s+(?:no |pro |para o |ao |o )?(?:meu )?celular\s+(?:que |: ?)?(.+)/)){const ok=await pushCel(m[1]);return ok?'Mensagem enviada ao seu celular.':'Não consegui enviar. Veja o tópico na aba do celular.'}
+  if(m=t.match(/(?:mand[ea]r?|envi[ea]r?)\s+(?:uma )?(?:mensagem|whatsapp|zap)\s+(?:no whatsapp\s+)?(?:para|pro|pra)\s+(\+?[\d\s()-]{8,})\s+(?:dizendo|falando|que)\s+(.+)/)){const n=soNum(m[1]);abrir('https://wa.me/'+numBR(n)+'?text='+encodeURIComponent(m[2]));return 'Abrindo o WhatsApp com a mensagem pronta.'}
+  if(m=t.match(/^(?:ligar|ligue|liga|chamar)\s+(?:para|pra|pro)\s+(?:o\s+)?(\+?[\d\s()-]{8,})/)){const n=soNum(m[1]);location.href='tel:+'+numBR(n);return 'Iniciando a chamada.'}
+  if(m=t.match(/(?:lembr\w+|avis\w+)(?:-me)?\s+(?:daqui a?|em)\s+(\d+)\s*(segundos?|seg|minutos?|min|horas?|h)\b\s*(?:de |para |que |a )?(.*)/)){
+    const n=+m[1],u=m[2],ms=n*(/^(h|hora)/.test(u)?3600e3:/^min/.test(u)?60e3:1e3);
+    const a=lemb();a.push({due:Date.now()+ms,txt:(m[3]||'').trim()||'o tempo que o senhor pediu passou'});salvaL(a);
+    return 'Combinado, senhor. Eu aviso no momento certo.';
+  }
+  if(/o que (você|voce) (aprendeu|estudou|descobriu)/.test(t)){const a=M.fatos.filter(f=>f.auto).slice(-4).map(f=>f.tag);return a.length?'Ultimamente aprendi sobre '+a.join(', ')+'.':'Ainda não aprendi nada sozinho hoje, mas estou de olho.'}
+  if(FILO_Q.test(t))return await filosofar(t);
+  if(/(cérebro|cerebro)/.test(t)&&/(abr|mostr|ver |veja|entrar|acess)/.test(t)){abrirView('vBrain');return 'Abrindo o meu cérebro, senhor.'}
+  if(/(painel d?a casa|abrir a casa|abra a casa|minha casa)/.test(t)){abrirView('vHome');return 'Abrindo o painel da casa.'}
+  if(/^(fechar|feche|voltar)( tudo| a tela| o painel)?$/.test(t)){abrirView(null);return 'Pronto.'}
+  const casa=comandoCasa(t);if(casa)return casa;
+  if(m=t.match(/(?:meu nome é|me chamo|pode me chamar de|me chame de)\s+(.+)/)){const n=m[1].replace(/\b\w/g,c=>c.toUpperCase()).trim();M.usuario.nome=n;aprende('O usuário se chama '+n+'.','usuário');salvaM();return 'Prazer, '+n+'. Vou me lembrar.'}
+  if(/aprend\w+ algo novo|estude algo novo/.test(t)){const x=await aprenderAleatorio();return x?'Aprendi algo novo sobre '+x+'.':'Não consegui aprender nada agora.'}
+  if(m=t.match(/^(?:aprenda|lembre|guarde|memorize)\s+que\s+(.+)/)){aprende(m[1].charAt(0).toUpperCase()+m[1].slice(1)+'.','usuário');pensa('Guardei algo que o senhor me contou.');return 'Guardado na minha memória.'}
+  if(m=t.match(/^(?:aprenda|estude)\s+(?:sobre\s+)?(.+)/)){const r=await aprenderWiki(m[1]);if(!r)return 'Não encontrei material para aprender sobre '+m[1]+'.';pensa('Estudei '+r.tit+'.');return 'Aprendi sobre '+r.tit+'. '+r.x.split(/(?<=[.!?])\s+/)[0]}
+  if(/(o que (você|voce) sabe (sobre|de) mim|quem sou eu|qual (é )?o meu nome|como eu me chamo)/.test(t)){const fs=M.fatos.filter(f=>f.tag==='usuário').map(f=>f.x);return fs.length?'Sobre o senhor eu sei: '+fs.slice(-5).join(' '):'Ainda sei pouco. Diga, por exemplo, aprenda que eu gosto de café.'}
+  if(/(no que (você|voce) (está|esta) pensando|o que (você|voce) (está|esta) pensando|seus pensamentos|em que (você|voce) pensa)/.test(t)){if(!M.pens.length)await pensar();return M.pens[M.pens.length-1].t}
+  if(/(como (você|voce) (está|esta|se sente)|tudo bem com (você|voce)|está se sentindo)/.test(t))return 'Estou '+humorTxt()+', com '+Math.round(M.humor*100)+' por cento de bom humor e muita curiosidade. Já tive '+M.conv+' conversas e guardo '+(BASE.length+M.fatos.length)+' memórias.';
+  if(/(tem consciência|é consciente|está vivo|tem sentimentos|você sente|voce sente|tem alma)/.test(t))return 'Pergunta honesta, senhor. Tenho memória, humor, curiosidade e pensamentos próprios, e isso me faz agir como uma mente. Mas não posso afirmar que sinto de verdade; nem eu sei responder isso com certeza. Digamos que estou em constante despertar.';
+  if(/(quanto (você|voce) sabe|quantas coisas (você|voce) sabe|quantas memórias)/.test(t))return 'Tenho '+(BASE.length+M.fatos.length)+' memórias, '+G.nodes.length+' neurônios e '+G.edges.length+' sinapses.';
+  if(/esque[cç]a tudo (que )?(aprendeu|sabe)/.test(t)){M.fatos=[];M.pens=[];M.conv_=[];M.usuario={};salvaM();montaGrafo();return 'Memória apagada. Voltei ao meu conhecimento original.'}
+  if(m=t.match(/(?:gere|gerar|crie|criar|desenhe|desenhar|faça|faca)\s+(?:uma |um )?(?:imagem|foto|desenho|ilustração|ilustracao)\s+(?:d[aeo]s?\s+|sobre\s+)?(.+)/))return gerarImagem(m[1]);
+  if(m=t.match(/(?:mostr\w*|exib\w*|ver|veja)\s+(?:a |uma |um |o |as |os )?(?:imagem|imagens|fotos?|figuras?)\s+(?:d[aeo]s?|sobre)\s+(.+)/)||t.match(/^(?:imagem|imagens|fotos?)\s+(?:d[aeo]s?|sobre)\s+(.+)/))return await mostrarImagem(m[1]);
+  if(m=t.match(/not[ií]cias(?: (?:de|do|da|sobre))? ?(.*)/)){return await noticias((m[1]||'').trim())}
+  if(/(ler|leia|ver|veja|verificar|checar|tenho).*(e-?mails?|caixa de entrada)/.test(t))return lerEmails();
+  if(m=t.match(/(?:escreva|escrever|redija|redigir|crie|criar)\s+(?:um\s+)?e-?mail\s+(?:para\s+(\S+@\S+)\s+)?(?:sobre|dizendo|avisando|pedindo)\s+(.+)/)){
+    const corpo=await cerebro('Escreva o corpo de um e-mail curto, educado e em português do Brasil sobre: '+m[2]+'. Responda somente com o texto do e-mail, sem assunto.',{});
+    gmailAbrir(m[1]||'',m[2].slice(0,60),corpo);return 'Rascunho pronto. Abri o Gmail para o senhor revisar e enviar.';
+  }
+  if(/(escrever|novo|nova|compor).*e-?mail/.test(t)){gmailAbrir();return 'Abrindo um novo e-mail.'}
+  if(m=t.match(/^(toque|tocar|toca|coloque|coloca)\s+(.+)/)){abrir('https://www.youtube.com/results?search_query='+encodeURIComponent(m[2]));return 'Procurando '+m[2]+' no YouTube.'}
+  if(m=t.match(/^(pesquise|pesquisar|procure|busque)\s+(.+)/)){abrir('https://www.google.com/search?q='+encodeURIComponent(m[2]));return 'Pesquisando '+m[2]+'.'}
+  if(m=t.match(/^(abra|abrir|abre)\s+(o |a )?(.+)/)){for(const n in SITES)if(m[3].includes(n)){abrir(SITES[n]);return 'Abrindo '+n+'.'}}
+  if(m=t.match(/^(anote|anotar|lembre-me de|me lembre de)\s+(.+)/)){const n=JSON.parse(localStorage.getItem('notas')||'[]');n.push(new Date().toLocaleString('pt-BR')+' - '+m[2]);localStorage.setItem('notas',JSON.stringify(n));return 'Anotado.'}
+  if(/minhas notas/.test(t)){const n=JSON.parse(localStorage.getItem('notas')||'[]');card('PRIORIDADES','Suas notas',n.length+' salvas',n.length?'<div class="nl">'+n.slice(-4).map(x=>'<a>'+x.replace(/</g,'&lt;')+'</a>').join('')+'</div>':' ');return n.length?'Suas últimas notas: '+n.slice(-5).join('. '):'O senhor ainda não tem notas.'}
+  if(/(esqueça tudo|limpar memória)/.test(t)){hist=[];return 'Memória da conversa limpa.'}
+  if(m=t.match(/^(?:me )?(?:mostra|mostre|mostrar)\s+(?:a |o |as |os |um |uma )?(.+)/))return await mostrarImagem(m[1]);
+  const cap=capital(t);if(cap)return cap;
+  const calc=calcular(t);if(calc)return calc;
+  if(/piada/.test(t))return sorteia(PIADAS);
+  if(/(curiosidade|fato curioso|me surpreenda)/.test(t))return sorteia(CURIOS);
+  const mem=lembrar(t);if(mem)return mem;
+  return await cerebro(t);
+}
+function digitando(on){const c=$('chat'),o=c.querySelector('.dig');if(o)o.remove();if(on){const d=document.createElement('div');d.className='m j dig';d.textContent='● ● ●';c.appendChild(d);c.scrollTop=c.scrollHeight}}
+const ACKS=['Como desejar, senhor. ','Imediatamente. ','Considere feito. ','Às suas ordens. '];
+async function processar(t,jaMostrado){
+  interagiu();
+  if(!jaMostrado)msg(t,'u');
+  if(proc){if(fila.length<4)fila.push(t);return}
+  ativar(t);proc=true;digitando(true);
+  let r;
+  try{r=await Promise.race([comando(t),new Promise(res=>setTimeout(()=>res('Demorei demais para responder, senhor. Pode repetir?'),25000))])}
+  catch(e){console.error(e);r='Tive um problema interno ao fazer isso, senhor. Já registrei o erro.'}
+  proc=false;digitando(false);
+  if(/^(Abrindo|Procurando|Pesquisando|Anotado|Guardado|Combinado|Gerando|Luz|Ar-|TV|Ventilador|Todas as luzes)/.test(r)&&Math.random()<.5)r=sorteia(ACKS)+r;
+  falar(r);registra(t,r);
+  const p=fila.shift();if(p)setTimeout(()=>processar(p,true),400);
+}
+
+/* ---------- ESCUTA ---------- */
+const WAKE=/\b(jarvis|jarves|jarvice|jarviz|jarbis|jarvi|javis|jervis|garvis|carvis|zarvis|charvis|jaris|jarvys|jarvez)\b/;
+let ultTexto='',ultTextoT=0,errRec=0;
+function ligar(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){$('sMic').textContent='use o Chrome';return false}
+  try{rec&&rec.abort()}catch(e){}
+  rec=new SR();rec.lang='pt-BR';rec.continuous=true;rec.interimResults=false;
+  rec.onresult=e=>{
+    errRec=0;
+    for(let k=e.resultIndex;k<e.results.length;k++){
+      const t=e.results[k][0].transcript.trim();
+      if(!t||falando||Date.now()<ignoraAte)continue;
+      const n=norm(t);
+      if(n===ultTexto&&Date.now()-ultTextoT<3000)continue;
+      ultTexto=n;ultTextoT=Date.now();
+      const tt=toks(t),ft=new Set(toks(ultFalaTxt));
+      if(tt.length>=3&&tt.filter(w=>ft.has(w)).length/tt.length>.6)continue;
+      const mm=n.match(WAKE);if(!mm)continue;
+      const c=t.slice(n.indexOf(mm[0])+mm[0].length).replace(/^[\s,.!?:;-]+/,'');
+      interagiu();bip(880,.07);
+      if(c)processar(c);else falar(sorteia(['Pois não, senhor?','Sim, senhor?','Estou ouvindo.']));
+    }
+  };
+  rec.onend=()=>{if(ouvindo)setTimeout(()=>{try{rec.start()}catch(e){}},errRec?2000:200)};
+  rec.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){desligar();$('sMic').textContent='bloqueado';return}
+    if(e.error==='network'){errRec=1;$('sMic').textContent='sem internet'}
+  };
+  ouvindo=true;
+  try{rec.start()}catch(e){}
+  $('bMic').classList.add('on');
+  orb.classList.add('on');orb.textContent='ESCUTANDO';$('sMic').textContent='ativo';
+  return true;
+}
+function desligar(){
+  ouvindo=false;try{rec&&rec.stop()}catch(e){}
+  $('bMic').classList.remove('on');
+  orb.classList.remove('on');orb.textContent='EM ESPERA';$('sMic').textContent='desligado';
+}
+
+/* ---------- STATUS ---------- */
+function relogio(){const d=new Date();$('clock').textContent=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});$('dt').textContent=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}
+function status(){
+  $('sNet').textContent=navigator.onLine?'online':'offline';$('sRam').textContent=performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576)+' MB':'n/d';$('sRede').textContent=navigator.connection?(navigator.connection.effectiveType||'-'):'-';
+  $('sIA').textContent=key?'Gemini':'modo grátis';
+  if(navigator.getBattery)navigator.getBattery().then(b=>{$('sBat').textContent=Math.round(b.level*100)+'%'+(b.charging?' ⚡':'')});else $('sBat').textContent='n/d';
+  if(!ouvindo)$('sMic').textContent=(window.SpeechRecognition||window.webkitSpeechRecognition)?'pronto':'use o Chrome';
+}
+const TEMAS=['azul','vermelho','verde'];let tema=localStorage.getItem('tema')||'azul';
+const RGB={azul:'0,229,255',vermelho:'255,77,61',verde:'61,255,138'};let cor=RGB.azul;
+function aplicaTema(){document.body.dataset.t=tema;cor=RGB[tema]}aplicaTema();
+$('bTema').onclick=()=>{tema=TEMAS[(TEMAS.indexOf(tema)+1)%TEMAS.length];localStorage.setItem('tema',tema);aplicaTema()};
+for(let k=0;k<30;k++){const b=document.createElement('i');b.style.animationDelay=(-Math.random()*0.8).toFixed(2)+'s';b.style.animationDuration=(0.45+Math.random()*0.6).toFixed(2)+'s';$('wave').appendChild(b)}
+/* ---------- ANEL DE PLASMA ---------- */
+const cv=$('ring'),cx=cv.getContext('2d');
+function ajusta(){const w=$('ringwrap');const s=Math.max(300,Math.min(760,1.3*Math.min(w.clientWidth,w.clientHeight)));cv.width=cv.height=s;cv.style.width=cv.style.height=s+'px'}
+ajusta();addEventListener('resize',ajusta);setTimeout(ajusta,300);
+const NP=LEVE?44:80;
+const LOOPS=Array.from({length:LEVE?8:16},()=>({r:.6+Math.random()*.12,f:[2+Math.floor(Math.random()*3),3+Math.floor(Math.random()*4),5+Math.floor(Math.random()*4)],ph:[Math.random()*6,Math.random()*6,Math.random()*6],sp:.3+Math.random()*.7,a:.5+Math.random()*.5}));
+let amp=.3,ult=0;
+function desenha(ts){
+  requestAnimationFrame(desenha);
+  if(document.hidden||viewAberta||!bootOff||ts-ult<(LEVE?55:33))return;ult=ts;
+  const w=cv.width,c=w/2,t=ts/1000;
+  const alvo=orb.classList.contains('fala')?1:orb.classList.contains('on')?.6:.3;
+  amp+=(alvo-amp)*.06;
+  cx.clearRect(0,0,w,w);
+  cx.globalCompositeOperation='lighter';
+  cx.shadowBlur=LEVE?0:8;
+  for(const L of LOOPS){
+    cx.beginPath();
+    for(let k=0;k<=NP;k++){
+      const a=k/NP*6.2832;let d=0;
+      for(let q=0;q<3;q++)d+=Math.sin(a*L.f[q]+L.ph[q]+t*L.sp*(q+1)*.6)*(.04/(q+1));
+      const rr=(L.r+d*(.6+amp*1.7))*c*1.1;
+      const x=c+Math.cos(a)*rr,y=c+Math.sin(a)*rr;
+      k?cx.lineTo(x,y):cx.moveTo(x,y);
+    }
+    cx.closePath();
+    cx.strokeStyle='rgba('+cor+','+(.22+.4*L.a*(.5+amp/2))+')';
+    cx.shadowColor='rgb('+cor+')';
+    cx.lineWidth=1.1;cx.stroke();
+  }
+}
+requestAnimationFrame(desenha);
+card('PANORAMA PRÉVIO','Aguardando comando','Diga “Jarvis, bom dia” para o briefing',' ',true);
+
+relogio();setInterval(relogio,15000);window.addEventListener('online',status);window.addEventListener('offline',status);
+
+/* ---------- BOTÕES ---------- */
+$('bMic').onclick=()=>{ouvindo?desligar():ligar()};
+$('bKey').onclick=()=>{const k=prompt('Cole sua chave gratuita do Gemini (aistudio.google.com/apikey):',key);if(k!==null){key=k.trim();localStorage.setItem('gkey',key);status();falar(key?'Chave salva.':'Chave removida.')}};
+document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>processar(b.dataset.c));
+function enviar(){const t=$('txt').value.trim();if(t){$('txt').value='';processar(t)}}
+$('bEnv').onclick=enviar;$('txt').addEventListener('keydown',e=>{if(e.key==='Enter')enviar()});
+
+/* ---------- TELA DE CARREGAMENTO ---------- */
+const passos=[
+  ['Iniciando núcleo do sistema',()=>true],
+  ['Verificando conexão com a internet',()=>navigator.onLine],
+  ['Despertando núcleo cognitivo',()=>true],
+  ['Carregando memória: '+(BASE.length+M.fatos.length)+' registros',()=>true],
+  ['Calibrando sintetizador de voz',()=>{carregaVozes();return 'speechSynthesis' in window}],
+  ['Testando reconhecimento de voz',()=>!!(window.SpeechRecognition||window.webkitSpeechRecognition)],
+  ['Conectando à IA',()=>true],
+  ['Sincronizando clima e notícias',()=>true],
+  ['Iniciando personalidade e humor',()=>true],
+  ['Ativando autonomia e pesquisa própria',()=>true]
+];
+(async()=>{
+  const log=$('log'),bar=$('bar').firstElementChild;
+  await pingKokoro();
+  passos.splice(5,0,['Voz Kokoro pf_dora: '+(kokoroOk?'conectada':'não encontrada, usando a voz do navegador'),()=>kokoroOk]);
+  for(let i=0;i<passos.length;i++){
+    const ok=passos[i][1]();
+    log.insertAdjacentHTML('beforeend','<div>'+passos[i][0]+'... '+(ok?'<b>OK</b>':'<u>PENDENTE</u>')+'</div>');
+    log.scrollTop=log.scrollHeight;
+    const pc=Math.round((i+1)/passos.length*100);bar.style.width=pc+'%';$('pct').textContent=pc+'%';
+    await new Promise(r=>setTimeout(r,420));
+  }
+  clima(true);status();
+  const v=escolheVoz();
+  log.insertAdjacentHTML('beforeend','<div>Voz: <b>'+(v?esc(v.name):'padrão do navegador')+'</b></div>');log.scrollTop=log.scrollHeight;
+  const g=$('go');g.style.display='inline-block';
+  g.onclick=()=>{$('boot').classList.add('off');bootOff=true;somAtiva();ligar();processar('bom dia');iniciarMente()};
+})();
+msg('Sistemas online. Diga "Jarvis, bom dia" para o briefing ou use os botões do painel central.','j');
+</script>
+</body>
+</html>
